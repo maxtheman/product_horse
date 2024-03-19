@@ -1,0 +1,9 @@
+project:
+  output-dir: _docs
+
+website:
+  title: "product_horse"
+  site-url: "https://maxtheman.github.io/product_horse"
+  description: "Product Horse Rides Again!"
+  repo-branch: main
+  repo-url: "https://github.com/maxtheman/product_horse"

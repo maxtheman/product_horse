@@ -21,6 +21,7 @@ anyio==4.3.0
     # via openai
 appnope==0.1.4
     # via ipykernel
+    # via ipython
 argon2-cffi==23.1.0
     # via jupyter-server
 argon2-cffi-bindings==21.2.0
@@ -36,10 +37,13 @@ async-lru==2.0.4
     # via jupyterlab
 attrs==23.2.0
     # via aiohttp
+    # via hypothesis
     # via jsonschema
     # via referencing
 babel==2.14.0
     # via jupyterlab-server
+backcall==0.2.0
+    # via ipython
 beautifulsoup4==4.12.3
     # via bs4
     # via llama-index-readers-file
@@ -109,6 +113,8 @@ httpx==0.27.0
     # via llama-index-legacy
     # via llamaindex-py-client
     # via openai
+hypothesis==6.99.9
+    # via product-horse
 idna==3.6
     # via anyio
     # via httpx
@@ -118,7 +124,7 @@ idna==3.6
 ipykernel==6.29.3
     # via ipywidgets
     # via jupyterlab
-ipython==8.22.2
+ipython==8.12.3
     # via execnb
     # via ipykernel
     # via ipywidgets
@@ -255,7 +261,7 @@ nest-asyncio==1.6.0
     # via ipykernel
     # via llama-index-core
     # via llama-index-legacy
-networkx==3.2.1
+networkx==3.1
     # via llama-index-core
     # via llama-index-legacy
 nltk==3.8.1
@@ -263,7 +269,7 @@ nltk==3.8.1
     # via llama-index-legacy
 notebook-shim==0.2.4
     # via jupyterlab
-numpy==1.26.4
+numpy==1.24.4
     # via llama-index-core
     # via llama-index-legacy
     # via pandas
@@ -281,7 +287,7 @@ packaging==24.0
     # via jupyterlab-server
     # via marshmallow
     # via nbconvert
-pandas==2.2.1
+pandas==2.0.3
     # via llama-index-core
     # via llama-index-legacy
 pandocfilters==1.5.1
@@ -289,6 +295,8 @@ pandocfilters==1.5.1
 parso==0.8.3
     # via jedi
 pexpect==4.9.0
+    # via ipython
+pickleshare==0.7.5
     # via ipython
 pillow==10.2.0
     # via llama-index-core
@@ -364,6 +372,8 @@ rpds-py==0.18.0
     # via referencing
 send2trash==1.8.2
     # via jupyter-server
+setuptools==69.2.0
+    # via product-horse
 six==1.16.0
     # via asttokens
     # via astunparse
@@ -374,6 +384,8 @@ sniffio==1.3.1
     # via anyio
     # via httpx
     # via openai
+sortedcontainers==2.4.0
+    # via hypothesis
 soupsieve==2.5
     # via beautifulsoup4
 sqlalchemy==2.0.28
