@@ -38,6 +38,7 @@ async-lru==2.0.4
 attrs==23.2.0
     # via aiohttp
     # via hypothesis
+    # via jsonlines
     # via jsonschema
     # via referencing
 babel==2.14.0
@@ -62,6 +63,11 @@ charset-normalizer==3.3.2
     # via requests
 click==8.1.7
     # via nltk
+cloudflare==2.19.2
+    # via cloudflare-python
+    # via product-horse
+cloudflare-python==1.0.1
+    # via product-horse
 comm==0.2.2
     # via ipykernel
 dataclasses-json==0.6.4
@@ -143,6 +149,8 @@ joblib==1.3.2
     # via nltk
 json5==0.9.24
     # via jupyterlab-server
+jsonlines==4.0.0
+    # via cloudflare
 jsonpointer==2.4
     # via jsonschema
 jsonschema==4.21.1
@@ -342,6 +350,7 @@ python-json-logger==2.0.7
 pytz==2024.1
     # via pandas
 pyyaml==6.0.1
+    # via cloudflare
     # via jupyter-events
     # via llama-index-core
     # via nbdev
@@ -357,6 +366,7 @@ regex==2023.12.25
     # via nltk
     # via tiktoken
 requests==2.31.0
+    # via cloudflare
     # via jupyterlab-server
     # via llama-index-core
     # via llama-index-legacy

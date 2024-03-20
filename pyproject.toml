@@ -12,6 +12,8 @@ dependencies = [
     "nbdev>=2.3.13",
     "setuptools>=69.2.0",
     "hypothesis>=6.99.9",
+    "cloudflare-python>=1.0.1",
+    "cloudflare>=2.19.2",
 ]
 readme = "README.md"
 requires-python = ">= 3.11"
