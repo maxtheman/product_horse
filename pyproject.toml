@@ -14,9 +14,14 @@ dependencies = [
     "hypothesis>=6.99.9",
     "cloudflare-python>=1.0.1",
     "cloudflare>=2.19.2",
+    "product-horse @ file:///Users/max/Documents/product_horse",
 ]
 readme = "README.md"
 requires-python = ">= 3.11"
+
+[tool.rye.scripts]
+prep = 'nbdev_prepare'
+test = 'nbdev_test'
 
 [build-system]
 requires = ["hatchling"]
