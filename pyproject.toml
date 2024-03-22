@@ -15,6 +15,7 @@ dependencies = [
     "cloudflare-python>=1.0.1",
     "cloudflare>=2.19.2",
     "product-horse @ file:///Users/max/Documents/product_horse",
+    "assemblyai>=0.23.1",
 ]
 readme = "README.md"
 requires-python = ">= 3.11"
