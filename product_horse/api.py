@@ -17,14 +17,22 @@ from typing import Any, List
 #   if file is NOT text
 #       kick off transcription job for file
 
+# Internal: Transcription job
+# given a file
+# get transcription and utterances
+# ai.extract speaker names
+# update speaker names in transcript with simple find/replace
+# save transcription and utterances to database
+
 # Get transcriptions
 # Get list of all transcriptions and users from db
 
+# Create Schema
+# Given text, ai.create schema.
+# Save Schema to db
+
 # Extract info
+# given schema and transcriptions
 # for transcription in transcriptions
-
-# Internal: Transcription job
-# given a file
-# get transcription
-# save transcription to database
-
+#   extract info into temp_data using ai w/schema
+# download temp_data as csv
