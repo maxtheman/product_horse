@@ -2,19 +2,21 @@
 
 # %% auto 0
 __all__ = ['STRINGS_TO_SANITIZE', 'ValidString', 'TModelOut', 'sanitize_strings', 'UnvalidatedUser', 'User',
-           'UnvalidatedFileMetadata', 'FileMetadata', 'UnvalidatedTranscription', 'Transcription', 'UnvalidatedSchema',
-           'Schema', 'AbstractDatabase', 'SqlModelDatabase']
+           'UnvalidatedFileMetadata', 'FileMetadata', 'UnvalidatedWord', 'Word', 'UnvalidatedUtterance', 'Utterance',
+           'UnvalidatedTranscription', 'Transcription', 'UnvalidatedSchema', 'Schema', 'AbstractDatabase',
+           'SqlModelDatabase']
 
 # %% ../nbs/07_db.ipynb 3
-from typing import Any, List, Sequence, Optional, cast, Type, TypeVar, Union
+from typing import Any, List, Sequence, Optional, cast, Type, TypeVar, Union, ForwardRef
 from typing_extensions import Annotated
 from abc import ABC, abstractmethod
+from sqlalchemy import BigInteger
 from pydantic import BaseModel
 from pydantic.functional_validators import BeforeValidator
-from sqlmodel import Field, Session, SQLModel, create_engine, select
+from sqlmodel import Field, Session, SQLModel, create_engine, select, col, Relationship
 from datetime import datetime
 from uuid import uuid4, UUID
-from sqlalchemy import Column, JSON 
+from sqlalchemy import Column, JSON
 
 # %% ../nbs/07_db.ipynb 5
 STRINGS_TO_SANITIZE = ["\x00"]
@@ -55,17 +57,45 @@ class FileMetadata(UnvalidatedFileMetadata, table=True):
     updated_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
 
 
+class UnvalidatedWord(SQLModel):
+    confidence: float
+    end: int = Field(sa_column=Column(BigInteger))
+    speaker: ValidString = Field(default=None)
+    start: int = Field(sa_column=Column(BigInteger))
+    text: ValidString = Field(default=None)
+
+
+class Word(UnvalidatedWord, table=True):
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    utterance_id: UUID = Field(default=None, foreign_key="utterance.id")
+    utterance: "Utterance" = Relationship(back_populates="words")
+
+
+class UnvalidatedUtterance(SQLModel):
+    confidence: float
+    end: int = Field(sa_column=Column(BigInteger))
+    speaker: ValidString = Field(default=None)
+    start: int = Field(sa_column=Column(BigInteger))
+    text: ValidString = Field(default=None)
+
+
+class Utterance(UnvalidatedUtterance, table=True):
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    words: list["Word"] = Relationship(back_populates="utterance")
+    transcription: "Transcription" = Relationship(back_populates="utterances")
+    transcription_id: UUID = Field(default=None, foreign_key="transcription.id")
+
 
 class UnvalidatedTranscription(SQLModel):
     file_id: UUID = Field(default=None, foreign_key="file_metadata.id")
     text: ValidString = Field(default=None)
 
 
-
 class Transcription(UnvalidatedTranscription, table=True):
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     created_at: datetime = Field(default=datetime.utcnow(), nullable=False)
     updated_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
+    utterances: list["Utterance"] = Relationship(back_populates="transcription")
 
 
 class UnvalidatedSchema(SQLModel):
@@ -77,8 +107,6 @@ class Schema(UnvalidatedSchema, table=True):
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     created_at: datetime = Field(default=datetime.utcnow(), nullable=False)
     updated_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
-
-
 
 # %% ../nbs/07_db.ipynb 6
 class AbstractDatabase(ABC):
@@ -113,7 +141,7 @@ class AbstractDatabase(ABC):
     # USERS
 
     @abstractmethod
-    def save_user(self, user: User) -> User:
+    def save_user(self, user: UnvalidatedUser) -> User:
         """Saves user information to the database."""
         raise NotImplementedError
 
@@ -132,13 +160,29 @@ class AbstractDatabase(ABC):
     # TRANSCRIPTIONS
 
     @abstractmethod
-    def save_transcription(self, transcription: UnvalidatedTranscription) -> Transcription:
+    def save_transcription(
+        self,
+        transcription: UnvalidatedTranscription,
+        utterances: List[UnvalidatedUtterance],
+    ) -> Transcription:
         """Saves transcription data for a given file."""
         raise NotImplementedError
 
     @abstractmethod
     def get_transcriptions(self, user_id: Union[str, UUID]) -> Sequence[Transcription]:
         """Retrieves all transcriptions and associated user information from the database."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_transcriptions_by_user_ids(
+        self, user_ids: List[str]
+    ) -> Sequence[Transcription]:
+        """Retrieves transcriptions for multiple user IDs."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_latest_schema(self) -> Optional[Schema]:
+        """Retrieves the latest schema based on the created_at timestamp."""
         raise NotImplementedError
 
     # SCHEMAS
@@ -153,10 +197,9 @@ class AbstractDatabase(ABC):
         """Retrieves a schema from the database."""
         raise NotImplementedError
 
-
-
 # %% ../nbs/07_db.ipynb 9
 TModelOut = TypeVar("TModelOut", bound=SQLModel)
+
 
 class SqlModelDatabase(AbstractDatabase):
     def __init__(self, database_url: str):
@@ -197,8 +240,44 @@ class SqlModelDatabase(AbstractDatabase):
                 select(FileMetadata).where(FileMetadata.id == file_id)
             ).first()
 
-    def save_transcription(self, transcription: UnvalidatedTranscription) -> Transcription:
-        return self._save(transcription, Transcription)
+    def save_transcription(
+        self,
+        transcription: UnvalidatedTranscription,
+        utterances: List[UnvalidatedUtterance],
+    ) -> Transcription:
+        with Session(self.engine) as session:
+            valid_transcription = Transcription.model_validate(transcription)
+            session.add(valid_transcription)
+            session.commit()
+            session.refresh(valid_transcription)
+
+            valid_utterances = [
+                Utterance.model_validate(
+                    utterance.model_dump(),
+                    update={"transcription_id": valid_transcription.id},
+                )
+                for utterance in utterances
+            ]
+            session.add_all(valid_utterances)
+            session.commit()
+
+            for utterance, valid_utterance in zip(utterances, valid_utterances):
+                for word in utterance.words:  # type: ignore
+                    word = cast(UnvalidatedWord, word)
+                    valid_word = Word.model_validate(
+                        word.model_dump(),
+                        update={"utterance_id": valid_utterance.id},
+                    )
+                    session.add(valid_word)
+                    session.commit()
+            session.commit()
+            # Eagerly load the associated utterances and words
+            session.refresh(valid_transcription)
+            for utterance in valid_transcription.utterances:
+                session.refresh(utterance)
+                for word in utterance.words:
+                    session.refresh(word)
+            return valid_transcription
 
     def get_transcriptions(self, user_id: Union[str, UUID]) -> Sequence[Transcription]:
         with Session(self.engine) as session:
@@ -215,6 +294,23 @@ class SqlModelDatabase(AbstractDatabase):
     def get_schema(self, schema_id: Union[str, UUID]) -> Optional[Schema]:
         with Session(self.engine) as session:
             return session.exec(select(Schema).where(Schema.id == schema_id)).first()
+
+    def get_transcriptions_by_user_ids(
+        self, user_ids: List[str]
+    ) -> Sequence[Transcription]:
+        with Session(self.engine) as session:
+            transcript_with_file_meta = (
+                select(Transcription)
+                .join(FileMetadata)
+                .where(str(FileMetadata.user_id) in user_ids)
+            )
+        return session.exec(transcript_with_file_meta).all()
+
+    def get_latest_schema(self) -> Optional[Schema]:
+        with Session(self.engine) as session:
+            return session.exec(
+                select(Schema).order_by(col(Schema.created_at).desc()).limit(1)
+            ).first()
 
     @property
     def operations(self) -> "Operations":
