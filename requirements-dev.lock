@@ -25,7 +25,8 @@ altair==5.2.0
     # via gradio
 annotated-types==0.6.0
     # via pydantic
-anthropic==0.21.3
+anthropic==0.20.0
+    # via llama-index-llms-anthropic
     # via product-horse
 anyio==4.3.0
     # via anthropic
@@ -33,6 +34,7 @@ anyio==4.3.0
     # via jupyter-server
     # via openai
     # via starlette
+    # via watchfiles
 appnope==0.1.4
     # via ipykernel
     # via ipython
@@ -42,6 +44,8 @@ argon2-cffi-bindings==21.2.0
     # via argon2-cffi
 arrow==1.3.0
     # via isoduration
+asgiref==3.8.1
+    # via opentelemetry-instrumentation-asgi
 assemblyai==0.23.1
     # via product-horse
 asttokens==2.4.1
@@ -61,22 +65,37 @@ babel==2.14.0
     # via jupyterlab-server
 backcall==0.2.0
     # via ipython
+backoff==2.2.1
+    # via posthog
+bcrypt==4.1.2
+    # via chromadb
 beautifulsoup4==4.12.3
     # via bs4
     # via llama-index-readers-file
     # via nbconvert
+    # via product-horse
 bleach==6.1.0
     # via nbconvert
 bs4==0.0.2
     # via llama-index-readers-file
+build==1.2.1
+    # via chromadb
+cachetools==5.3.3
+    # via google-auth
 certifi==2024.2.2
     # via httpcore
     # via httpx
+    # via kubernetes
+    # via pulsar-client
     # via requests
 cffi==1.16.0
     # via argon2-cffi-bindings
 charset-normalizer==3.3.2
     # via requests
+chroma-hnswlib==0.7.3
+    # via chromadb
+chromadb==0.4.24
+    # via llama-index-vector-stores-chroma
 click==8.1.7
     # via litellm
     # via nltk
@@ -89,6 +108,8 @@ cloudflare-python==1.0.1
     # via product-horse
 colorama==0.4.6
     # via typer
+coloredlogs==15.0.1
+    # via onnxruntime
 comm==0.2.2
     # via ipykernel
 contourpy==1.2.0
@@ -102,13 +123,16 @@ datasets==2.18.0
     # via product-horse
 debugpy==1.8.1
     # via ipykernel
-decorator==5.1.1
+decorator==4.4.2
     # via ipython
+    # via moviepy
 defusedxml==0.7.1
     # via nbconvert
 deprecated==1.2.14
     # via llama-index-core
     # via llama-index-legacy
+    # via opentelemetry-api
+    # via opentelemetry-exporter-otlp-proto-grpc
 dill==0.3.8
     # via datasets
     # via multiprocess
@@ -129,6 +153,7 @@ execnb==0.1.5
 executing==2.0.1
     # via stack-data
 fastapi==0.110.0
+    # via chromadb
     # via gradio
 fastcore==1.5.29
     # via execnb
@@ -142,6 +167,8 @@ filelock==3.13.3
     # via datasets
     # via huggingface-hub
     # via torch
+flatbuffers==24.3.25
+    # via onnxruntime
 fonttools==4.50.0
     # via matplotlib
 fqdn==1.5.1
@@ -158,17 +185,26 @@ fsspec==2024.2.0
     # via torch
 ghapi==1.0.4
     # via nbdev
+google-auth==2.29.0
+    # via kubernetes
+googleapis-common-protos==1.63.0
+    # via opentelemetry-exporter-otlp-proto-grpc
 gradio==4.23.0
     # via product-horse
 gradio-client==0.14.0
     # via gradio
 greenlet==3.0.3
     # via sqlalchemy
+grpcio==1.62.1
+    # via chromadb
+    # via opentelemetry-exporter-otlp-proto-grpc
 h11==0.14.0
     # via httpcore
     # via uvicorn
 httpcore==1.0.4
     # via httpx
+httptools==0.6.1
+    # via uvicorn
 httpx==0.27.0
     # via anthropic
     # via assemblyai
@@ -185,6 +221,8 @@ huggingface-hub==0.22.0
     # via gradio
     # via gradio-client
     # via tokenizers
+humanfriendly==10.0
+    # via coloredlogs
 hypothesis==6.99.9
     # via product-horse
 idna==3.6
@@ -193,9 +231,15 @@ idna==3.6
     # via jsonschema
     # via requests
     # via yarl
-importlib-metadata==7.1.0
+imageio==2.34.0
+    # via moviepy
+imageio-ffmpeg==0.4.9
+    # via moviepy
+importlib-metadata==7.0.0
     # via litellm
+    # via opentelemetry-api
 importlib-resources==6.4.0
+    # via chromadb
     # via gradio
 instructor==0.6.7
     # via product-horse
@@ -271,29 +315,34 @@ jupyterlab-widgets==3.0.10
     # via ipywidgets
 kiwisolver==1.4.5
     # via matplotlib
+kubernetes==29.0.0
+    # via chromadb
 litellm==1.34.5
     # via product-horse
 llama-cpp-python==0.2.57
     # via product-horse
-llama-index==0.10.20
+llama-index==0.10.26
     # via product-horse
 llama-index-agent-openai==0.1.6
     # via llama-index
     # via llama-index-program-openai
 llama-index-cli==0.1.10
     # via llama-index
-llama-index-core==0.10.20.post2
+llama-index-core==0.10.26
     # via llama-index
     # via llama-index-agent-openai
     # via llama-index-cli
     # via llama-index-embeddings-openai
     # via llama-index-indices-managed-llama-cloud
+    # via llama-index-llms-anthropic
     # via llama-index-llms-openai
     # via llama-index-multi-modal-llms-openai
     # via llama-index-program-openai
     # via llama-index-question-gen-openai
+    # via llama-index-readers-database
     # via llama-index-readers-file
     # via llama-index-readers-llama-parse
+    # via llama-index-vector-stores-chroma
     # via llama-parse
 llama-index-embeddings-openai==0.1.6
     # via llama-index
@@ -302,7 +351,9 @@ llama-index-indices-managed-llama-cloud==0.1.4
     # via llama-index
 llama-index-legacy==0.9.48
     # via llama-index
-llama-index-llms-openai==0.1.12
+llama-index-llms-anthropic==0.1.7
+    # via product-horse
+llama-index-llms-openai==0.1.14
     # via llama-index
     # via llama-index-agent-openai
     # via llama-index-cli
@@ -316,13 +367,17 @@ llama-index-program-openai==0.1.4
     # via llama-index-question-gen-openai
 llama-index-question-gen-openai==0.1.3
     # via llama-index
+llama-index-readers-database==0.1.3
+    # via product-horse
 llama-index-readers-file==0.1.11
     # via llama-index
 llama-index-readers-llama-parse==0.1.3
     # via llama-index
+llama-index-vector-stores-chroma==0.1.6
+    # via product-horse
 llama-parse==0.3.9
     # via llama-index-readers-llama-parse
-llamaindex-py-client==0.1.13
+llamaindex-py-client==0.1.15
     # via llama-index-core
     # via llama-index-indices-managed-llama-cloud
 markdown-it-py==3.0.0
@@ -342,6 +397,12 @@ mdurl==0.1.2
     # via markdown-it-py
 mistune==3.0.2
     # via nbconvert
+mmh3==4.1.0
+    # via chromadb
+monotonic==1.6
+    # via posthog
+moviepy==1.0.3
+    # via product-horse
 mpmath==1.3.0
     # via sympy
 multidict==6.0.5
@@ -377,28 +438,72 @@ notebook-shim==0.2.4
 numpy==1.24.4
     # via accelerate
     # via altair
+    # via chroma-hnswlib
+    # via chromadb
     # via contourpy
     # via datasets
     # via gradio
+    # via imageio
     # via llama-cpp-python
     # via llama-index-core
     # via llama-index-legacy
     # via matplotlib
+    # via moviepy
+    # via onnxruntime
     # via pandas
     # via pyarrow
+oauthlib==3.2.2
+    # via kubernetes
+    # via requests-oauthlib
+onnxruntime==1.17.1
+    # via chromadb
 openai==1.14.3
     # via instructor
     # via litellm
     # via llama-index-core
     # via llama-index-legacy
     # via product-horse
+opentelemetry-api==1.24.0
+    # via chromadb
+    # via opentelemetry-exporter-otlp-proto-grpc
+    # via opentelemetry-instrumentation
+    # via opentelemetry-instrumentation-asgi
+    # via opentelemetry-instrumentation-fastapi
+    # via opentelemetry-sdk
+opentelemetry-exporter-otlp-proto-common==1.24.0
+    # via opentelemetry-exporter-otlp-proto-grpc
+opentelemetry-exporter-otlp-proto-grpc==1.24.0
+    # via chromadb
+opentelemetry-instrumentation==0.45b0
+    # via opentelemetry-instrumentation-asgi
+    # via opentelemetry-instrumentation-fastapi
+opentelemetry-instrumentation-asgi==0.45b0
+    # via opentelemetry-instrumentation-fastapi
+opentelemetry-instrumentation-fastapi==0.45b0
+    # via chromadb
+opentelemetry-proto==1.24.0
+    # via opentelemetry-exporter-otlp-proto-common
+    # via opentelemetry-exporter-otlp-proto-grpc
+opentelemetry-sdk==1.24.0
+    # via chromadb
+    # via opentelemetry-exporter-otlp-proto-grpc
+opentelemetry-semantic-conventions==0.45b0
+    # via opentelemetry-instrumentation-asgi
+    # via opentelemetry-instrumentation-fastapi
+    # via opentelemetry-sdk
+opentelemetry-util-http==0.45b0
+    # via opentelemetry-instrumentation-asgi
+    # via opentelemetry-instrumentation-fastapi
 orjson==3.9.15
+    # via chromadb
     # via gradio
 overrides==7.7.0
+    # via chromadb
     # via jupyter-server
 packaging==24.0
     # via accelerate
     # via altair
+    # via build
     # via datasets
     # via docker
     # via fastcore
@@ -413,6 +518,7 @@ packaging==24.0
     # via marshmallow
     # via matplotlib
     # via nbconvert
+    # via onnxruntime
 pandas==2.2.1
     # via altair
     # via datasets
@@ -430,6 +536,7 @@ pickleshare==0.7.5
     # via ipython
 pillow==10.2.0
     # via gradio
+    # via imageio
     # via llama-index-core
     # via matplotlib
 pip==24.0
@@ -437,10 +544,18 @@ pip==24.0
     # via ghapi
 platformdirs==4.2.0
     # via jupyter-core
+posthog==3.5.0
+    # via chromadb
+proglog==0.1.10
+    # via moviepy
 prometheus-client==0.20.0
     # via jupyter-server
 prompt-toolkit==3.0.43
     # via ipython
+protobuf==4.25.3
+    # via googleapis-common-protos
+    # via onnxruntime
+    # via opentelemetry-proto
 psutil==5.9.8
     # via accelerate
     # via ipykernel
@@ -449,17 +564,25 @@ psycopg2-binary==2.9.9
 ptyprocess==0.7.0
     # via pexpect
     # via terminado
+pulsar-client==3.4.0
+    # via chromadb
 pure-eval==0.2.2
     # via stack-data
 pyarrow==15.0.2
     # via datasets
 pyarrow-hotfix==0.6
     # via datasets
+pyasn1==0.6.0
+    # via pyasn1-modules
+    # via rsa
+pyasn1-modules==0.4.0
+    # via google-auth
 pycparser==2.21
     # via cffi
 pydantic==2.6.4
     # via anthropic
     # via assemblyai
+    # via chromadb
     # via fastapi
     # via gradio
     # via instructor
@@ -483,14 +606,21 @@ pyparsing==3.1.2
     # via matplotlib
 pypdf==4.1.0
     # via llama-index-readers-file
+pypika==0.48.9
+    # via chromadb
+pyproject-hooks==1.0.0
+    # via build
 python-dateutil==2.9.0.post0
     # via arrow
     # via jupyter-client
+    # via kubernetes
     # via matplotlib
     # via pandas
+    # via posthog
 python-dotenv==1.0.1
     # via litellm
     # via product-horse
+    # via uvicorn
 python-json-logger==2.0.7
     # via jupyter-events
 python-multipart==0.0.9
@@ -499,13 +629,16 @@ pytz==2024.1
     # via pandas
 pyyaml==6.0.1
     # via accelerate
+    # via chromadb
     # via cloudflare
     # via datasets
     # via gradio
     # via huggingface-hub
     # via jupyter-events
+    # via kubernetes
     # via llama-index-core
     # via nbdev
+    # via uvicorn
 pyzmq==25.1.2
     # via ipykernel
     # via jupyter-client
@@ -518,15 +651,22 @@ regex==2023.12.25
     # via nltk
     # via tiktoken
 requests==2.31.0
+    # via chromadb
     # via cloudflare
     # via datasets
     # via docker
     # via huggingface-hub
     # via jupyterlab-server
+    # via kubernetes
     # via litellm
     # via llama-index-core
     # via llama-index-legacy
+    # via moviepy
+    # via posthog
+    # via requests-oauthlib
     # via tiktoken
+requests-oauthlib==2.0.0
+    # via kubernetes
 rfc3339-validator==0.1.4
     # via jsonschema
     # via jupyter-events
@@ -539,6 +679,8 @@ rich==13.7.1
 rpds-py==0.18.0
     # via jsonschema
     # via referencing
+rsa==4.9
+    # via google-auth
 ruff==0.3.4
     # via gradio
 safetensors==0.4.2
@@ -548,6 +690,8 @@ semantic-version==2.10.0
 send2trash==1.8.2
     # via jupyter-server
 setuptools==69.2.0
+    # via imageio-ffmpeg
+    # via opentelemetry-instrumentation
     # via product-horse
 shellingham==1.5.4
     # via typer
@@ -555,6 +699,8 @@ six==1.16.0
     # via asttokens
     # via astunparse
     # via bleach
+    # via kubernetes
+    # via posthog
     # via python-dateutil
     # via rfc3339-validator
 sniffio==1.3.1
@@ -580,8 +726,10 @@ starlette==0.36.3
 striprtf==0.0.26
     # via llama-index-readers-file
 sympy==1.12
+    # via onnxruntime
     # via torch
 tenacity==8.2.3
+    # via chromadb
     # via instructor
     # via llama-index-core
     # via llama-index-legacy
@@ -601,6 +749,7 @@ tinycss2==1.2.1
     # via nbconvert
 tokenizers==0.15.2
     # via anthropic
+    # via chromadb
     # via litellm
 tomlkit==0.12.0
     # via gradio
@@ -615,11 +764,15 @@ tornado==6.4
     # via jupyterlab
     # via terminado
 tqdm==4.66.2
+    # via chromadb
     # via datasets
     # via huggingface-hub
     # via llama-index-core
+    # via moviepy
     # via nltk
     # via openai
+    # via product-horse
+    # via proglog
 traitlets==5.14.2
     # via comm
     # via ipykernel
@@ -635,6 +788,7 @@ traitlets==5.14.2
     # via nbconvert
     # via nbformat
 typer==0.9.4
+    # via chromadb
     # via gradio
     # via instructor
 types-python-dateutil==2.9.0.20240316
@@ -642,6 +796,7 @@ types-python-dateutil==2.9.0.20240316
 typing-extensions==4.10.0
     # via anthropic
     # via assemblyai
+    # via chromadb
     # via fastapi
     # via gradio
     # via gradio-client
@@ -650,6 +805,7 @@ typing-extensions==4.10.0
     # via llama-index-core
     # via llama-index-legacy
     # via openai
+    # via opentelemetry-sdk
     # via pydantic
     # via pydantic-core
     # via sqlalchemy
@@ -666,11 +822,17 @@ uri-template==1.3.0
     # via jsonschema
 urllib3==2.2.1
     # via docker
+    # via kubernetes
     # via requests
 uvicorn==0.29.0
+    # via chromadb
     # via gradio
+uvloop==0.19.0
+    # via uvicorn
 watchdog==4.0.0
     # via nbdev
+watchfiles==0.21.0
+    # via uvicorn
 wcwidth==0.2.13
     # via prompt-toolkit
 webcolors==1.13
@@ -680,15 +842,19 @@ webencodings==0.5.1
     # via tinycss2
 websocket-client==1.7.0
     # via jupyter-server
+    # via kubernetes
 websockets==11.0.3
     # via assemblyai
     # via gradio-client
+    # via uvicorn
 wheel==0.43.0
     # via astunparse
 widgetsnbextension==4.0.10
     # via ipywidgets
 wrapt==1.16.0
     # via deprecated
+    # via llama-index-core
+    # via opentelemetry-instrumentation
     # via testcontainers-core
 xxhash==3.4.1
     # via datasets

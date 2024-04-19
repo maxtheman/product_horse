@@ -7,10 +7,11 @@ __all__ = ['STRINGS_TO_SANITIZE', 'ValidString', 'TModelOut', 'sanitize_strings'
            'SqlModelDatabase']
 
 # %% ../nbs/07_db.ipynb 3
-from typing import Any, List, Sequence, Optional, cast, Type, TypeVar, Union, ForwardRef
+from typing import Any, List, Sequence, Optional, cast, Type, TypeVar, Union, ForwardRef, Literal
 from typing_extensions import Annotated
 from abc import ABC, abstractmethod
 from sqlalchemy import BigInteger
+from sqlalchemy.orm import selectinload, joinedload
 from pydantic import BaseModel
 from pydantic.functional_validators import BeforeValidator
 from sqlmodel import Field, Session, SQLModel, create_engine, select, col, Relationship
@@ -51,11 +52,11 @@ class UnvalidatedFileMetadata(SQLModel):
 
 
 class FileMetadata(UnvalidatedFileMetadata, table=True):
-    __tablename__ = "file_metadata"  # type: ignore
+    __tablename__ = "file_metadata"
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     created_at: datetime = Field(default=datetime.utcnow(), nullable=False)
     updated_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
-
+    transcription: "Transcription" = Relationship(back_populates="file_metadata")
 
 class UnvalidatedWord(SQLModel):
     confidence: float
@@ -96,6 +97,10 @@ class Transcription(UnvalidatedTranscription, table=True):
     created_at: datetime = Field(default=datetime.utcnow(), nullable=False)
     updated_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
     utterances: list["Utterance"] = Relationship(back_populates="transcription")
+    file_metadata: "FileMetadata" = Relationship(back_populates="transcription")
+
+    def __hash__(self):
+        return hash(self.id)
 
 
 class UnvalidatedSchema(SQLModel):
@@ -156,6 +161,11 @@ class AbstractDatabase(ABC):
     def get_file_metadata(self, file_id: Union[str, UUID]) -> Optional[FileMetadata]:
         """Retrieves metadata about a file from the database."""
         raise NotImplementedError
+    
+    @abstractmethod
+    def get_file_metadata_from_list_of_transcript_ids(self, transcript_ids: List[str]) -> Sequence[FileMetadata]:
+        """Retrieves metadata about a file from the database."""
+        raise NotImplementedError
 
     # TRANSCRIPTIONS
 
@@ -172,11 +182,21 @@ class AbstractDatabase(ABC):
     def get_transcriptions(self, user_id: Union[str, UUID]) -> Sequence[Transcription]:
         """Retrieves all transcriptions and associated user information from the database."""
         raise NotImplementedError
+    
+    @abstractmethod
+    def get_all_unique_transcriptions(self, mode: Literal["file_name", "user_id"]) -> Sequence[Transcription]:
+        """Retrieves all unique transcriptions from the database."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_user(self, user_id: Union[str, UUID]) -> Optional[User]:
+        """Retrieves a user from the database."""
+        raise NotImplementedError
 
     @abstractmethod
     def get_transcriptions_by_user_ids(
         self, user_ids: List[str]
-    ) -> Sequence[Transcription]:
+    ) -> List[Transcription]:
         """Retrieves transcriptions for multiple user IDs."""
         raise NotImplementedError
 
@@ -196,6 +216,12 @@ class AbstractDatabase(ABC):
     def get_schema(self, schema_id: Union[str, UUID]) -> Optional[Schema]:
         """Retrieves a schema from the database."""
         raise NotImplementedError
+    
+    @abstractmethod
+    def get_all_users(self) -> Sequence[User]:
+        """Retrieves all users from the database."""
+        raise NotImplementedError
+
 
 # %% ../nbs/07_db.ipynb 9
 TModelOut = TypeVar("TModelOut", bound=SQLModel)
@@ -231,6 +257,7 @@ class SqlModelDatabase(AbstractDatabase):
     def save_user(self, user: UnvalidatedUser) -> User:
         return self._save(user, User)
 
+
     def save_file_metadata(self, metadata: UnvalidatedFileMetadata) -> FileMetadata:
         return self._save(metadata, FileMetadata)
 
@@ -239,6 +266,15 @@ class SqlModelDatabase(AbstractDatabase):
             return session.exec(
                 select(FileMetadata).where(FileMetadata.id == file_id)
             ).first()
+        
+    def get_file_metadata_from_list_of_transcript_ids(self, transcript_ids: List[str]) -> Sequence[FileMetadata]:
+        with Session(self.engine) as session:
+            return session.exec(
+                select(FileMetadata)
+                .options(joinedload(FileMetadata.transcription))
+                .join(Transcription)
+                .where(col(Transcription.id).in_(transcript_ids))
+            ).all()
 
     def save_transcription(
         self,
@@ -287,6 +323,10 @@ class SqlModelDatabase(AbstractDatabase):
                 .where(FileMetadata.user_id == user_id)
             )
             return session.exec(transcript_with_file_meta).all()
+        
+    def get_user(self, user_id: str | UUID) -> Optional[User]:
+        with Session(self.engine) as session:
+            return session.exec(select(User).where(User.id == user_id)).first()
 
     def save_schema(self, schema: UnvalidatedSchema) -> Schema:
         return self._save(schema, Schema)
@@ -297,20 +337,47 @@ class SqlModelDatabase(AbstractDatabase):
 
     def get_transcriptions_by_user_ids(
         self, user_ids: List[str]
-    ) -> Sequence[Transcription]:
+    ) -> List[Transcription]:
         with Session(self.engine) as session:
             transcript_with_file_meta = (
                 select(Transcription)
+                .options(selectinload(Transcription.utterances))
                 .join(FileMetadata)
-                .where(str(FileMetadata.user_id) in user_ids)
+                .where(col(FileMetadata.user_id).in_(user_ids))
             )
         return session.exec(transcript_with_file_meta).all()
+
+    def get_all_unique_transcriptions(self, mode: Literal["file_name", "user_id"]) -> Sequence[Transcription]:
+        """
+        Returns all unique transcriptions and utterances based on the mode specified.
+        If mode is "file_name", returns all unique transcriptions based on the file name.
+        If mode is "user_id", returns all unique transcriptions based on the user ID.
+        """
+        with Session(self.engine) as session:
+            if mode == "file_name":
+                unique_metadata_query = session.exec(
+                    select(FileMetadata)
+                    .distinct(col(FileMetadata.file_name))
+                )
+                unique_metadata_ids = [result.id for result in unique_metadata_query]
+                transcripts = session.exec(
+                    select(Transcription)
+                    .options(selectinload(Transcription.utterances))
+                    .where(col(Transcription.file_id).in_(unique_metadata_ids))
+                ).all()
+                return transcripts
+            elif mode == "user_id":
+                raise NotImplementedError
 
     def get_latest_schema(self) -> Optional[Schema]:
         with Session(self.engine) as session:
             return session.exec(
                 select(Schema).order_by(col(Schema.created_at).desc()).limit(1)
             ).first()
+        
+    def get_all_users(self) -> Sequence[User]:
+        with Session(self.engine) as session:
+            return session.exec(select(User)).all()
 
     @property
     def operations(self) -> "Operations":

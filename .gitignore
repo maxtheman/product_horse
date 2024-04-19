@@ -9,7 +9,7 @@ wheels/
 .env
 # venv
 .venv
-
+temp-videos/
 .DS_Store
 
 .hypothesis/

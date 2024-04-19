@@ -2,10 +2,10 @@
 
 # %% auto 0
 __all__ = ['FileDict', 'create_user_and_add_files', 'transcribe_file_and_extract_speakers', 'create_and_save_schema',
-           'extract_info_from_transcriptions']
+           'extract_info_from_transcriptions', 'get_relevant_utterances_from_query']
 
 # %% ../nbs/08_api.ipynb 3
-from typing import Any, List, TypedDict, Tuple
+from typing import Any, List, TypedDict, Tuple, Sequence
 from uuid import UUID
 from product_horse.filesystems import (
     AbstractFileSystem,
@@ -21,13 +21,17 @@ from product_horse.db import (
     Transcription,
     Schema,
     UnvalidatedSchema,
+    UnvalidatedUtterance,
+    Utterance,
 )
-from .audio_video import AudioEditor, AssemblyAiTranscript, Utterance
-from .extraction import AIModelClient, QADataManager, Questions
+from .audio_video import AudioEditor, AssemblyAiTranscript
+from .extraction import AIModelClient, Questions, Answers
+from .search import get_nodes_from_transcripts, embed_and_augment_nodes, get_utterances_from_query
+
 
 # %% ../nbs/08_api.ipynb 4
 class FileDict(TypedDict):
-    content: str
+    content: bytes
     name: str
 
 
@@ -51,19 +55,18 @@ def create_user_and_add_files(
     Returns:
         Tuple[User, List[FileMetadata]]: The created user object and a list of file metadata objects created.
     """
-
     unvalidated_user = UnvalidatedUser(**user_data)
+    print(unvalidated_user)
     user: User = db.save_user(unvalidated_user)
     metadata: List[FileMetadata] = []
 
     for file_info in files:
         file_path = fs.build_user_path(user, FilePathType.USER_ID_BASE)
-        fs.create_folder(file_path)
-        file_content = file_info["content"].encode()
+        path = fs.create_folder(file_path)
+        file_content = file_info["content"]
         file = fs.create_file(
             file_path, file_content, file_info["name"], authorized=authorized
         )
-
         # Save file metadata to database
         unvalidated_metadata = UnvalidatedFileMetadata(
             user_id=user.id, file_name=file_info["name"], file_path=file.uri
@@ -74,7 +77,7 @@ def create_user_and_add_files(
 
 # %% ../nbs/08_api.ipynb 5
 async def transcribe_file_and_extract_speakers(
-    file_id: str,
+    file_metadata: FileMetadata,
     db: AbstractDatabase,
     audio_editor: AudioEditor,
 ) -> Tuple[Transcription, List[str]]:
@@ -82,15 +85,17 @@ async def transcribe_file_and_extract_speakers(
     Transcribe an audio file, extract speaker names, and save the transcription to the database.
 
     Args:
-        file_id (str): The ID of the file to transcribe.
+        file_metadata (FileMetadata): The metadata of the file to transcribe.
         db (AbstractDatabase): Database instance for saving transcription data.
         audio_editor (AssemblyAIClient): AssemblyAI client instance for transcription.
 
     Returns:
         Tuple[Transcription, List[str]]: The created transcription object and a list of extracted speaker names.
     """
-    transcription_result: AssemblyAiTranscript = await audio_editor.transcribe(file_id)
-    utterances: List[Utterance] = transcription_result.utterances
+    transcription_result: AssemblyAiTranscript = await audio_editor.transcribe(
+        str(file_metadata.file_path)
+    )
+    utterances: List[UnvalidatedUtterance] = transcription_result.utterances
     speaker_names: List[str] = list(
         set([utterance.speaker for utterance in utterances])
     )
@@ -99,9 +104,11 @@ async def transcribe_file_and_extract_speakers(
 
     # Save transcription to the database
     unvalidated_transcription = UnvalidatedTranscription(
-        file_id=UUID(file_id), text=transcription_result.text
+        file_id=file_metadata.id, text=transcription_result.text
     )
-    transcription: Transcription = db.save_transcription(unvalidated_transcription)
+    transcription: Transcription = db.save_transcription(
+        unvalidated_transcription, utterances
+    )
 
     return transcription, speaker_names
 
@@ -128,39 +135,44 @@ def create_and_save_schema(
     return schema
 
 # %% ../nbs/08_api.ipynb 7
-def extract_info_from_transcriptions(
-    schema: Questions,
-    transcriptions: List[Transcription],
+import asyncio
+
+async def extract_info_from_transcriptions(
+    schema: Schema,
+    transcriptions: Sequence[Transcription],
     db: AbstractDatabase,
     ai_model_client: AIModelClient,
-    output_file: str,
-) -> bytes:
+) -> Sequence[Answers]:
     """
-    Extract information from transcriptions based on a schema and returns QADataManager
+    Extract information from transcriptions based on a schema and yields each extraction.
 
     Args:
-        schema (Questions): The schema to use for extraction.
-        transcriptions (List[Transcription]): The list of transcriptions to extract information from.
+        schema (Schema): The schema to use for extraction. Converted to questions internally.
+        transcriptions (Sequence[Transcription]): The list of transcriptions to extract information from.
         db (AbstractDatabase): The database instance.
         ai_model_client (AIModelClient): The AI model client instance.
-        output_file (str): The path to the output CSV file.
-    
-    Returns:
-        bytes: The CSV in bytes.
-    """
-    qa_data_manager = QADataManager()
 
-    for transcription in transcriptions:
-        answers = ai_model_client.extract_information(transcription.text, schema)
-        metadata = db.get_file_metadata(transcription.file_id)
-        if metadata is None:
-            raise ValueError(f"No metadata found for file_id {transcription.file_id}")
-        qa_data_manager.add_answers(
-            schema,
-            answers,
-            document_name=str(transcription.file_id),
-            user_id=str(metadata.user_id),
-        )
-    return qa_data_manager.to_csv_bytes()
+    Yields:
+        Iterator[Tuple[Transcription, dict]]: An iterator of tuples containing the transcription and extracted answers.
+    """
+    questions = Questions(**schema.json_schema)
+
+
+    tasks = [ai_model_client.extract_information(transcription.text, questions) for transcription in transcriptions]
+
+    # Use asyncio.gather to run them concurrently and wait for all to complete
+    answers: list[Answers] = await asyncio.gather(*tasks)
+
+    return answers
+
+# %% ../nbs/08_api.ipynb 8
+async def get_relevant_utterances_from_query(query: str, transcripts: List[Transcription]) -> List[Utterance]:
+    """
+    Returns time-sorted utterances from a query
+    """
+    nodes = await get_nodes_from_transcripts(transcripts)
+    nodes = await embed_and_augment_nodes(nodes)
+    utterances = get_utterances_from_query(query, nodes)
+    return utterances
 
 
