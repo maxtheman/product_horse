@@ -189,7 +189,8 @@ def make_video_from_utterances(utterances: List[Utterance], database: AbstractDa
         transcript_utterances_by_id_with_file_path[str(meta.transcription.id)] = {
             "file_path": meta.file_path,
             "utterances": utterance_by_id,
-            "video": video_flag
+            "video": video_flag,
+            "user_name": database.get_user(meta.user_id).name
         }
     if len(transcript_utterances_by_id_with_file_path) == 0:
         raise ValueError("No transcripts found")
@@ -205,6 +206,7 @@ def make_video_from_utterances(utterances: List[Utterance], database: AbstractDa
     target_resolution_normal = (int(max_resolution[0]), int(max_resolution[1]))
     for _, data in transcript_utterances_by_id_with_file_path.items():
         file_path: str = data["file_path"]
+        user_name: str = data["user_name"]
         if os.path.exists(file_path) is False:
             raise ValueError(f"File not found: {file_path}")
         clip_utterances: List[Utterance] = data["utterances"]
@@ -245,7 +247,7 @@ def make_video_from_utterances(utterances: List[Utterance], database: AbstractDa
                 clip.fps = max_fps
         transcript_final_clip = concatenate_videoclips(clips=clips_buffer)
         print('transcript clip size', transcript_final_clip.size)
-        example_metadata_banner = TextClip('Metadata goes here',fontsize=48,color="white",stroke_color="black", font='Helvetica', stroke_width=2,)
+        example_metadata_banner = TextClip(user_name,fontsize=48,color="white",stroke_color="black", font='Helvetica', stroke_width=2,)
         example_metadata_banner = example_metadata_banner.set_position(
             (0.05, 0.05), relative=True,
                     ).set_duration(transcript_final_clip.duration)

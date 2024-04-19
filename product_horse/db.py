@@ -7,7 +7,18 @@ __all__ = ['STRINGS_TO_SANITIZE', 'ValidString', 'TModelOut', 'sanitize_strings'
            'SqlModelDatabase']
 
 # %% ../nbs/07_db.ipynb 3
-from typing import Any, List, Sequence, Optional, cast, Type, TypeVar, Union, ForwardRef, Literal
+from typing import (
+    Any,
+    List,
+    Sequence,
+    Optional,
+    cast,
+    Type,
+    TypeVar,
+    Union,
+    ForwardRef,
+    Literal,
+)
 from typing_extensions import Annotated
 from abc import ABC, abstractmethod
 from sqlalchemy import BigInteger
@@ -42,7 +53,9 @@ class User(UnvalidatedUser, table=True):
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     created_at: datetime = Field(default=datetime.utcnow(), nullable=False)
     updated_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
-    pass
+    file_metadata: List["FileMetadata"] = Relationship(
+        back_populates="user", sa_relationship_kwargs={"cascade": "all, delete-orphan"}
+    )
 
 
 class UnvalidatedFileMetadata(SQLModel):
@@ -56,7 +69,12 @@ class FileMetadata(UnvalidatedFileMetadata, table=True):
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     created_at: datetime = Field(default=datetime.utcnow(), nullable=False)
     updated_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
-    transcription: "Transcription" = Relationship(back_populates="file_metadata")
+    transcription: "Transcription" = Relationship(
+        back_populates="file_metadata",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    )
+    user: "User" = Relationship(back_populates="file_metadata")
+
 
 class UnvalidatedWord(SQLModel):
     confidence: float
@@ -82,7 +100,10 @@ class UnvalidatedUtterance(SQLModel):
 
 class Utterance(UnvalidatedUtterance, table=True):
     id: UUID = Field(default_factory=uuid4, primary_key=True)
-    words: list["Word"] = Relationship(back_populates="utterance")
+    words: list["Word"] = Relationship(
+        back_populates="utterance",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    )
     transcription: "Transcription" = Relationship(back_populates="utterances")
     transcription_id: UUID = Field(default=None, foreign_key="transcription.id")
 
@@ -96,7 +117,10 @@ class Transcription(UnvalidatedTranscription, table=True):
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     created_at: datetime = Field(default=datetime.utcnow(), nullable=False)
     updated_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
-    utterances: list["Utterance"] = Relationship(back_populates="transcription")
+    utterances: list["Utterance"] = Relationship(
+        back_populates="transcription",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    )
     file_metadata: "FileMetadata" = Relationship(back_populates="transcription")
 
     def __hash__(self):
@@ -150,6 +174,15 @@ class AbstractDatabase(ABC):
         """Saves user information to the database."""
         raise NotImplementedError
 
+    @abstractmethod
+    def update_user(self, user_id: UUID, values_to_update: dict[str, Any]) -> User:
+        """Updates user information in the database."""
+        raise NotImplementedError
+
+    def delete_user(self, user_id: UUID) -> None:
+        """Deletes a user from the database. Cascades to all transcriptions and file metadata"""
+        raise NotImplementedError
+
     # FILES
 
     @abstractmethod
@@ -161,9 +194,18 @@ class AbstractDatabase(ABC):
     def get_file_metadata(self, file_id: Union[str, UUID]) -> Optional[FileMetadata]:
         """Retrieves metadata about a file from the database."""
         raise NotImplementedError
-    
+
     @abstractmethod
-    def get_file_metadata_from_list_of_transcript_ids(self, transcript_ids: List[str]) -> Sequence[FileMetadata]:
+    def update_file_metadata(
+        self, file_id: UUID, values_to_update: dict[str, Any]
+    ) -> FileMetadata:
+        """Updates metadata about a file."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_file_metadata_from_list_of_transcript_ids(
+        self, transcript_ids: List[str]
+    ) -> Sequence[FileMetadata]:
         """Retrieves metadata about a file from the database."""
         raise NotImplementedError
 
@@ -182,9 +224,11 @@ class AbstractDatabase(ABC):
     def get_transcriptions(self, user_id: Union[str, UUID]) -> Sequence[Transcription]:
         """Retrieves all transcriptions and associated user information from the database."""
         raise NotImplementedError
-    
+
     @abstractmethod
-    def get_all_unique_transcriptions(self, mode: Literal["file_name", "user_id"]) -> Sequence[Transcription]:
+    def get_all_unique_transcriptions(
+        self, mode: Literal["file_name", "user_id"]
+    ) -> Sequence[Transcription]:
         """Retrieves all unique transcriptions from the database."""
         raise NotImplementedError
 
@@ -216,12 +260,11 @@ class AbstractDatabase(ABC):
     def get_schema(self, schema_id: Union[str, UUID]) -> Optional[Schema]:
         """Retrieves a schema from the database."""
         raise NotImplementedError
-    
+
     @abstractmethod
     def get_all_users(self) -> Sequence[User]:
         """Retrieves all users from the database."""
         raise NotImplementedError
-
 
 # %% ../nbs/07_db.ipynb 9
 TModelOut = TypeVar("TModelOut", bound=SQLModel)
@@ -257,6 +300,25 @@ class SqlModelDatabase(AbstractDatabase):
     def save_user(self, user: UnvalidatedUser) -> User:
         return self._save(user, User)
 
+    def delete_user(self, user_id: UUID) -> None:
+        with Session(self.engine) as session:
+            user = session.exec(select(User).where(User.id == user_id)).first()
+            if user is None:
+                raise ValueError(f"User with id {user_id} not found")
+            session.delete(user)
+            session.commit()
+
+    def update_user(self, user_id: UUID, values_to_update: dict[str, Any]) -> User:
+        with Session(self.engine) as session:
+            user = session.exec(select(User).where(User.id == user_id)).first()
+            if user is None:
+                raise ValueError(f"User with id {user_id} not found")
+            for key, value in values_to_update.items():
+                setattr(user, key, value)
+            session.add(user)
+            session.commit()
+            session.refresh(user)
+            return user
 
     def save_file_metadata(self, metadata: UnvalidatedFileMetadata) -> FileMetadata:
         return self._save(metadata, FileMetadata)
@@ -266,8 +328,26 @@ class SqlModelDatabase(AbstractDatabase):
             return session.exec(
                 select(FileMetadata).where(FileMetadata.id == file_id)
             ).first()
-        
-    def get_file_metadata_from_list_of_transcript_ids(self, transcript_ids: List[str]) -> Sequence[FileMetadata]:
+
+    def update_file_metadata(
+        self, file_id: UUID, values_to_update: dict[str, Any]
+    ) -> FileMetadata:
+        with Session(self.engine) as session:
+            metadata = session.exec(
+                select(FileMetadata).where(FileMetadata.id == file_id)
+            ).first()
+            if metadata is None:
+                raise ValueError(f"FileMetadata with id {file_id} not found")
+            for key, value in values_to_update.items():
+                setattr(metadata, key, value)
+            session.add(metadata)
+            session.commit()
+            session.refresh(metadata)
+            return metadata
+
+    def get_file_metadata_from_list_of_transcript_ids(
+        self, transcript_ids: List[str]
+    ) -> Sequence[FileMetadata]:
         with Session(self.engine) as session:
             return session.exec(
                 select(FileMetadata)
@@ -323,7 +403,7 @@ class SqlModelDatabase(AbstractDatabase):
                 .where(FileMetadata.user_id == user_id)
             )
             return session.exec(transcript_with_file_meta).all()
-        
+
     def get_user(self, user_id: str | UUID) -> Optional[User]:
         with Session(self.engine) as session:
             return session.exec(select(User).where(User.id == user_id)).first()
@@ -347,7 +427,9 @@ class SqlModelDatabase(AbstractDatabase):
             )
         return session.exec(transcript_with_file_meta).all()
 
-    def get_all_unique_transcriptions(self, mode: Literal["file_name", "user_id"]) -> Sequence[Transcription]:
+    def get_all_unique_transcriptions(
+        self, mode: Literal["file_name", "user_id"]
+    ) -> Sequence[Transcription]:
         """
         Returns all unique transcriptions and utterances based on the mode specified.
         If mode is "file_name", returns all unique transcriptions based on the file name.
@@ -356,8 +438,7 @@ class SqlModelDatabase(AbstractDatabase):
         with Session(self.engine) as session:
             if mode == "file_name":
                 unique_metadata_query = session.exec(
-                    select(FileMetadata)
-                    .distinct(col(FileMetadata.file_name))
+                    select(FileMetadata).distinct(col(FileMetadata.file_name))
                 )
                 unique_metadata_ids = [result.id for result in unique_metadata_query]
                 transcripts = session.exec(
@@ -374,7 +455,7 @@ class SqlModelDatabase(AbstractDatabase):
             return session.exec(
                 select(Schema).order_by(col(Schema.created_at).desc()).limit(1)
             ).first()
-        
+
     def get_all_users(self) -> Sequence[User]:
         with Session(self.engine) as session:
             return session.exec(select(User)).all()
