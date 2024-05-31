@@ -452,6 +452,7 @@ numpy==1.24.4
     # via onnxruntime
     # via pandas
     # via pyarrow
+    # via seewav
 oauthlib==3.2.2
     # via kubernetes
     # via requests-oauthlib
@@ -577,6 +578,8 @@ pyasn1==0.6.0
     # via rsa
 pyasn1-modules==0.4.0
     # via google-auth
+pycairo==1.26.0
+    # via seewav
 pycparser==2.21
     # via cffi
 pydantic==2.6.4
@@ -685,6 +688,8 @@ ruff==0.3.4
     # via gradio
 safetensors==0.4.2
     # via accelerate
+seewav==0.1.0
+    # via product-horse
 semantic-version==2.10.0
     # via gradio
 send2trash==1.8.2
@@ -773,6 +778,7 @@ tqdm==4.66.2
     # via openai
     # via product-horse
     # via proglog
+    # via seewav
 traitlets==5.14.2
     # via comm
     # via ipykernel

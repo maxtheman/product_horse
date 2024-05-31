@@ -2,10 +2,12 @@
 
 # %% auto 0
 __all__ = ['word_validator', 'ClipType', 'AssemblyAiWord', 'AssemblyAiUtterance', 'AssemblyAiTranscript', 'AudioEditor',
-           'make_video_from_utterances']
+           'make_mp4_animation', 'make_word_clips_from_file_path_and_words', 'make_video_from_utterances']
 
 # %% ../nbs/03_audio_video.ipynb 3
 from typing import List, Tuple, cast, List, Optional, Dict, Union, Type
+from pathlib import Path
+from seewav import visualize
 from moviepy.editor import (
     VideoFileClip,
     AudioFileClip,
@@ -20,8 +22,9 @@ import requests
 import os
 import numpy as np
 from dotenv import load_dotenv
-from .db import Utterance, AbstractDatabase, ValidString
+from .db import Utterance, AbstractDatabase, ValidString, Word
 from collections import defaultdict
+import tempfile
 
 
 load_dotenv()
@@ -131,32 +134,163 @@ class AudioEditor:
         pass
 
 # %% ../nbs/03_audio_video.ipynb 5
+def make_mp4_animation(
+    audio_path: str,
+    output_path: str,
+    seek: int = 0,  # start at the beginning
+    duration: int = 10,  # duration in seconds
+    rate: int = 30,  # frames per second
+    bars: int = 60,  # number of bars in the visualization
+    speed: int = 5,  # speed of transitions
+    time: float = 0.5,  # amount of audio shown at once on a frame
+    oversample: int = 5,  # frequency of changes
+    fg_color: Tuple[float, float, float] = (0.2, 0.5, 0.8),  # foreground color
+    bg_color: Tuple[float, float, float] = (1, 1, 1),  # background color
+    size: Tuple[int, int] = (640, 480),  # size of the output video
+) -> None:
+    """
+    Generate the visualisation for the `audio` file, using a `tmp` folder and saving the final
+    video in `out`.
+    `seek` and `durations` gives the extract location if any.
+    `rate` is the framerate of the output video.
+
+    `bars` is the number of bars in the animation.
+    `speed` is the base speed of transition. Depending on volume, actual speed will vary
+        between 0.5 and 2 times it.
+    `time` amount of audio shown at once on a frame.
+    `oversample` higher values will lead to more frequent changes.
+    `fg_color` is the rgb color to use for the foreground.
+    `bg_color` is the rgb color to use for the background.
+    `size` is the `(width, height)` in pixels to generate.
+    """
+    with tempfile.TemporaryDirectory() as tmp_directory:
+        visualize(
+            audio=Path(audio_path),
+            tmp=Path(tmp_directory),
+            out=Path(output_path),
+            seek=seek,
+            duration=duration,
+            rate=rate,
+            bars=bars,
+            speed=speed,
+            time=time,
+            oversample=oversample,
+            fg_color=fg_color,
+            bg_color=bg_color,
+            size=size,
+        )
+
+# %% ../nbs/03_audio_video.ipynb 6
+from collections import OrderedDict
+
 ClipType = Union[VideoFileClip, AudioFileClip, CompositeVideoClip]
+
 
 def _group_utterances_by_transcript_id(
     utterances: List[Utterance],
-) -> dict[str, List[Utterance]]:
+) -> OrderedDict[str, List[Utterance]]:
     """Groups utterances by transcript_id using defaultdict."""
-    transcript_utterances_by_id: dict[str, List[Utterance]] = defaultdict(list)
+    transcript_utterances_by_id: OrderedDict[str, List[Utterance]] = OrderedDict()
     for utterance in utterances:
-        transcript_utterances_by_id[str(utterance.transcription_id)].append(utterance)
-    return dict(transcript_utterances_by_id)
+        transcript_id = str(utterance.transcription_id)
+        if transcript_id not in transcript_utterances_by_id:
+            transcript_utterances_by_id[transcript_id] = []
+        transcript_utterances_by_id[transcript_id].append(utterance)
+    return transcript_utterances_by_id
+
 
 def _get_video_properties(file_path: str):
     clip = VideoFileClip(file_path)
     frame_rate: int = cast(int, clip.fps)
-    resolution: Tuple[int, int] = cast(Tuple[int, int], clip.size) 
+    resolution: Tuple[int, int] = cast(Tuple[int, int], clip.size)
     duration: float = clip.duration
     aspect_ratio: float = clip.aspect_ratio
     clip.close()
     return frame_rate, resolution, duration, aspect_ratio
+
+
+def make_word_clips_from_file_path_and_words(
+    file_path: str,
+    words: List[Word],
+    target_resolution: Tuple[int, int],
+    start: float,
+    end: float = 0.0,
+    position: str = "center",
+) -> CompositeVideoClip:
+    """word_start is indexed against the start of the transcript, not necessarily the video clip. So the start of the video clip is used as an offset."""
+    clips_buffer = []
+    word_clips = []
+    previous_word_end = 0.0
+    gap_between_words = 0.0
+    # start of this video_clip should be used as 0
+    if end > 0:
+        video_clip = VideoFileClip(
+            file_path, target_resolution=target_resolution
+        ).subclip(start, end)
+    else:
+        video_clip = VideoFileClip(file_path, target_resolution=target_resolution)
+    text_positions = {
+    "center": ("center","center"),
+    "bottom-third": ("center","bottom")
+        }
+    text_position = text_positions.get(position, (0.5, 0.5))
+    print('text_position', text_position)
+    for word in words:
+        word_start = float(word.start) / 1000
+        word_start_adj = word_start - start
+        word_end = float(word.end) / 1000
+        word_end_adj = word_end - start
+        # print('word_end_adj', word_end_adj)
+        # print('word_start_adj', word_start_adj)
+        # print('word_end', word_end)
+        # print('word_start', word_start)
+        final_end = video_clip.duration
+        if word_start_adj > final_end:
+            print("word_start_adj is greater than final_end")
+            final_word_clip = concatenate_videoclips(word_clips).set_position(text_position)
+            final_clip = CompositeVideoClip([video_clip, final_word_clip])
+            return final_clip
+        if word_end_adj > final_end:
+            print("word_end_adj is greater than final_end")
+            word_end_adj = final_end
+        word_text = word.text
+        word_color = (
+            "white"
+            if word.speaker == "A"
+            else "yellow"
+            if word.speaker == "B"
+            else "grey"
+        )
+        word_clip = TextClip(
+            word_text,
+            fontsize=48,
+            size=(target_resolution[1], target_resolution[0]/3), #because of the weird resolution flipping issue
+            color=word_color,
+            stroke_color="black",
+            font="Helvetica",
+            stroke_width=2,
+        )
+        duration = word_end_adj - word_start_adj
+        word_clip = word_clip.set_duration(
+            duration + gap_between_words
+        ) # setting position here doesn't seem to work at all
+        word_clips.append(word_clip)
+        gap_between_words = word_start_adj - previous_word_end
+        previous_word_end = word_end_adj
+    final_word_clip = concatenate_videoclips(word_clips).set_position(text_position)
+    final_clip = CompositeVideoClip([video_clip, final_word_clip])
+    return final_clip
+
 
 def _get_audio_properties(file_path: str):
     clip = AudioFileClip(file_path)
     clip.close()
     return clip.fps, None, clip.duration
 
-def make_video_from_utterances(utterances: List[Utterance], database: AbstractDatabase, video_title="Product Horse"):
+
+def make_video_from_utterances(
+    utterances: List[Utterance], database: AbstractDatabase, video_title="Product Horse"
+):
     """List of utterances to video. Utterances will be processed in the order they are recieved."""
     transcript_utterances_by_id = _group_utterances_by_transcript_id(utterances)
     list_of_transcript_ids = [
@@ -166,21 +300,36 @@ def make_video_from_utterances(utterances: List[Utterance], database: AbstractDa
         list_of_transcript_ids
     )
     if len(metadata) == 0:
-        raise ValueError(f"No metadata found, important variables listed: {list_of_transcript_ids}")
-    transcript_utterances_by_id_with_file_path: Dict[str, Dict[str, Union[ValidString, List[Utterance], bool]]] = {}
+        raise ValueError(
+            f"No metadata found, important variables listed: {list_of_transcript_ids}"
+        )
+    transcript_utterances_by_id_with_file_path: Dict[
+        str, Dict[str, Union[ValidString, List[Utterance], bool]]
+    ] = {}
     resolutions: List[Tuple[int, int]] = []
     frame_rates: List[int] = []
     frame_rate: Optional[int] = 30
     resolution: Optional[Tuple[int, int]] = None
     aspect_ratios: List[float] = []
-    for meta in metadata:
+    reordered_metadata = []
+    audio_files_to_process = []
+    for transcript_id in transcript_utterances_by_id.keys():
+        for meta in metadata:
+            if str(meta.transcription.id) == transcript_id:
+                reordered_metadata.append(meta)
+                break
+    for meta in reordered_metadata:
         video_flag = meta.file_path.endswith(".mp4")
         if video_flag:
-            frame_rate, resolution, duration, aspect_ratio = _get_video_properties(meta.file_path)
+            frame_rate, resolution, duration, aspect_ratio = _get_video_properties(
+                meta.file_path
+            )
         else:
             frame_rate, resolution, duration = _get_audio_properties(meta.file_path)
         if frame_rate is None:
-            raise ValueError(f"No frame rate or resolution found for {video_flag and 'video' or 'audio'} file {meta.file_path}")
+            raise ValueError(
+                f"No frame rate or resolution found for {video_flag and 'video' or 'audio'} file {meta.file_path}"
+            )
         if resolution is not None:
             resolutions.append(resolution)
             frame_rates.append(frame_rate)
@@ -190,7 +339,7 @@ def make_video_from_utterances(utterances: List[Utterance], database: AbstractDa
             "file_path": meta.file_path,
             "utterances": utterance_by_id,
             "video": video_flag,
-            "user_name": database.get_user(meta.user_id).name
+            "user_name": database.get_user(meta.user_id).name,
         }
     if len(transcript_utterances_by_id_with_file_path) == 0:
         raise ValueError("No transcripts found")
@@ -202,61 +351,120 @@ def make_video_from_utterances(utterances: List[Utterance], database: AbstractDa
         max_fps = np.max(frame_rates)
     transcript_videos: List[ClipType] = []
     # at some point the target resolution is reversed internally in moviepy for videoclips, so reverse it here to counteract that.
-    target_resolution=(int(max_resolution[1]), int(max_resolution[0]))
+    target_resolution = (int(max_resolution[1]), int(max_resolution[0]))
     target_resolution_normal = (int(max_resolution[0]), int(max_resolution[1]))
-    for _, data in transcript_utterances_by_id_with_file_path.items():
-        file_path: str = data["file_path"]
-        user_name: str = data["user_name"]
-        if os.path.exists(file_path) is False:
-            raise ValueError(f"File not found: {file_path}")
-        clip_utterances: List[Utterance] = data["utterances"]
-        video_flag: bool = data["video"]
-        clips_buffer: List[ClipType] = []
-        for clip_utterance in clip_utterances:
-            start: float = clip_utterance.start / 1000 #type: ignore
-            end: float = clip_utterance.end / 1000 #type: ignore
-            if not video_flag:
-                '''handle the audio file conversion to video'''
-                working_clip: ClipType = AudioFileClip(file_path).subclip(
-                    start, end
-                )
-                if max_fps != working_clip.fps:
-                    working_clip = working_clip.set_fps(max_fps)
-                # Create a blank video clip with the same duration as the audio clip
-                blank_color = ColorClip(size=target_resolution_normal, color=(0,0,0), duration=working_clip.duration)
-                blank_clip = blank_color.set_audio(working_clip)
-                call_only_banner = TextClip("Call Only", fontsize=36, color="white", stroke_color="black", font='Helvetica', stroke_width=2)
-                call_only_banner = call_only_banner.set_position('center', relative=True).set_duration(working_clip.duration)
-                # Composite the text onto the blank video
-                clip = CompositeVideoClip([blank_clip, call_only_banner]) # type: ignore
+    with tempfile.TemporaryDirectory() as tmp_directory:
+        os.mkdir(tmp_directory + "/audio")
+        os.mkdir(tmp_directory + "/visualizations")
+        for _, data in transcript_utterances_by_id_with_file_path.items():
+            file_path: str = data["file_path"]
+            user_name: str = data["user_name"]
+            if os.path.exists(file_path) is False:
+                raise ValueError(f"File not found: {file_path}")
+            clip_utterances: List[Utterance] = data["utterances"]
+            video_flag: bool = data["video"]
+            clips_buffer: List[ClipType] = []
+            for clip_utterance in clip_utterances:
+                clip_words = database.get_words_from_utterance_ids([clip_utterance.id])
+                start: float = float(clip_utterance.start) / 1000
+                end: float = float(clip_utterance.end) / 1000
+                clip_duration = int(end - start)
+                if not video_flag:
+                    """handle the audio file conversion to video"""
+                    working_clip: ClipType = AudioFileClip(file_path).subclip(
+                        start, end
+                    )  # type: ignore
+                    temp_audio_path = (
+                        f"{tmp_directory}/audio/{transcript_id}_{clip_utterance.id}.mp3"
+                    )
+                    working_clip.write_audiofile(temp_audio_path)
+                    working_clip.close()
+                    # Visualize the audio segment
+                    output_viz_path = f"{tmp_directory}/visualizations/{transcript_id}_{clip_utterance.id}.mp4"
+                    if (
+                        clip_duration > 1
+                    ):  # if you remove this you will get failures with exit status 254 from ffmeg
+                        make_mp4_animation(
+                            audio_path=temp_audio_path,
+                            output_path=output_viz_path,
+                            duration=clip_duration,
+                            rate=max_fps,
+                            size=target_resolution_normal,
+                        )
+                        word_clip = make_word_clips_from_file_path_and_words(
+                            output_viz_path,
+                            clip_words,
+                            target_resolution,
+                            start,
+                            position="center",
+                        )
+                        clips_buffer.append(word_clip)
+                else:
+                    word_clip = make_word_clips_from_file_path_and_words(
+                        file_path,
+                        clip_words,
+                        target_resolution,
+                        start,
+                        end,
+                        position="bottom-third",
+                    )
+                    clips_buffer.append(word_clip)
+                    # video_clip = VideoFileClip(
+                    #     file_path, target_resolution=target_resolution
+                    # ).subclip(start, end)
+                    # clips_buffer.append(video_clip)
+                # TODO: Adjust playback speed to match the new frame rate
+                # Potential implementation:
+                # if clip.fps != max_fps:
+                #     speed_factor = clip.fps / max_fps
+                #     clip = clip.fx(vfx.speedx, speed_factor)
+                #     clip = clip.set_fps(max_fps)
+            for clip in clips_buffer:
+                if not hasattr(clip, "fps") or clip.fps is None:
+                    clip.fps = max_fps
+            transcript_final_clip = concatenate_videoclips(clips=clips_buffer)
+            print("transcript clip size", transcript_final_clip.size)
+            if "!" in user_name:
+                transcript_videos.append(transcript_final_clip)
             else:
-                clip: ClipType = VideoFileClip(file_path, target_resolution=target_resolution).subclip(
-                    start, end
+                metadata_banner = TextClip(
+                    user_name,
+                    fontsize=48,
+                    color="white",
+                    stroke_color="black",
+                    font="Helvetica",
+                    stroke_width=2,
                 )
-                if max_fps != clip.fps:
-                    clip = clip.set_fps(max_fps)
-            # transcripts take a LONG time to bake in and don't wrap here, commenting out for now.
-            # utterance_banner = TextClip(clip_utterance.text,fontsize=36,color="white",stroke_color="black", font='Helvetica', stroke_width=2,).set_position(
-            #     (0.05, 0.85), relative=True,
-            # ).set_duration(clip.duration)
-            # final_utterance_clip = CompositeVideoClip([clip, utterance_banner])
-            # clips_buffer.append(final_utterance_clip)
-            clips_buffer.append(clip)
-        for clip in clips_buffer:
-            if not hasattr(clip, 'fps') or clip.fps is None:
-                clip.fps = max_fps
-        transcript_final_clip = concatenate_videoclips(clips=clips_buffer)
-        print('transcript clip size', transcript_final_clip.size)
-        example_metadata_banner = TextClip(user_name,fontsize=48,color="white",stroke_color="black", font='Helvetica', stroke_width=2,)
-        example_metadata_banner = example_metadata_banner.set_position(
-            (0.05, 0.05), relative=True,
-                    ).set_duration(transcript_final_clip.duration)
-        final_clip = CompositeVideoClip([transcript_final_clip, example_metadata_banner])
-        final_clip.fps = max_fps
-        transcript_videos.append(final_clip)
-    file_path = f"../temp-videos/{video_title}.mp4"
-    with concatenate_videoclips(transcript_videos) as video:
-        video.write_videofile(
-                file_path, fps=max_fps, audio_codec="aac")
+                metadata_banner = metadata_banner.set_position(
+                    (0.05, 0.05),
+                    relative=True,
+                ).set_duration(transcript_final_clip.duration)
+                final_clip = CompositeVideoClip(
+                    [transcript_final_clip, metadata_banner]
+                )
+                final_clip.fps = max_fps
+                transcript_videos.append(final_clip)
+        video_title_safe = (
+            video_title.replace(" ", "_")
+            .replace("'", "")
+            .replace("?", "")
+            .replace(":", "")
+            .replace("$", "")
+            .replace(".", "")
+            .replace("/", "")
+            .replace("\\", "")
+        )
+        if len(video_title_safe) > 50:
+            video_title_safe = video_title_safe[:50]
+        file_path = f"../temp-videos/{video_title_safe}.mp4"
+        final_video = concatenate_videoclips(transcript_videos)
+        with final_video as video:
+            video.write_videofile(
+                file_path,
+                fps=max_fps,
+                audio_codec="aac",
+                preset="ultrafast",
+                codec="libx264",
+                threads=os.cpu_count(),
+            )
     return file_path
-

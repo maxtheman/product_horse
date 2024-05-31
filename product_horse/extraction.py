@@ -38,6 +38,7 @@ class ModelType(Enum):
     GPT_3_5_TURBO = "gpt-3.5-turbo"
     GPT_4_TURBO = "gpt-4-turbo-2024-04-09"
     CLAUDE_3_OPUS = "claude-3-opus-20240229"
+    GPT_4o = "gpt-4o"
 
 
 class QuestionSchema(BaseModel):
@@ -84,7 +85,7 @@ class AIModelClient:
 
     def __init__(
         self,
-        model_type: ModelType = ModelType.GPT_4_TURBO,
+        model_type: ModelType = ModelType.GPT_4o,
         max_retries: int = 10,
         max_tokens: int = 4096,
     ):
@@ -132,7 +133,7 @@ class AIModelClient:
         self,
         text: str,
         questions: Questions,
-        model_type_override: Optional[ModelType] = ModelType.GPT_4_0125_PREVIEW,
+        model_type_override: Optional[ModelType] = ModelType.GPT_4o,
     ) -> Answers:
         """
         Extract information from the given text using the provided schema.
@@ -145,7 +146,7 @@ class AIModelClient:
             Answers: The extracted information.
         """
         EXTRACTION_PROMPT_C = f"Answer the following questions based on the user-provided text using ONLY JSON with NO preamble so it can be validated immediately, with no spacing or newlines, following the following JSON schema format: {Answers.model_json_schema()}, i.e., start your response with {self.start_with}. You should respond in a message, not a tool or function call, if that's an option for you. Be concise, and answer only the question or questions provided: {questions.model_dump_json()}. Answer these questions in the most intelligent way possible, as this is high-stakes for the user to get it right. Provide direct supporting quotes where possible."
-        EXTRACTION_PROMPT_A = f"You are a product analyst assistant. Please look at the transcripts provided and give careful responses for each field, explaining the answer and your rationale to the question in detail while also providing 1-3 direct quotes from the transcript, and edited lightly if needed for brevity and clarity.\n\nBe as comprehensive as possible, providing all relevant information.\n\nHere's the scheme you must respond in, it will be validated with pydantic and so you MUST respond only with the JSON.\n\nUse Null if the answer is not present in the transcript, not every question is asked each time.\n\nUse context clues to understand who the researcher is in the conversation and which speaker is being interviewed.{questions.model_dump_json()} Finally, If the answer is not provided in the transcript provided, say 'N/a'."
+        EXTRACTION_PROMPT_A = f"You are a product analyst assistant. Please look at the transcripts provided and give careful responses for each field, explaining the answer and your rationale to the question in detail while also providing 1-3 direct quotes from the transcript when relevant, and edited lightly if needed for brevity and clarity.\n\nBe as comprehensive as possible, providing all relevant information.\n\nHere's the scheme you must respond in, it will be validated with pydantic and so you MUST respond only with the JSON.\n\nUse Null if the answer is not present in the transcript, not every question is asked each time.\n\nUse context clues to understand who the researcher is in the conversation and which speaker is being interviewed.{questions.model_dump_json()} Finally, If the answer is not provided in the transcript provided, say 'N/a', unless the question says that it's required by the user — in that case, provide your best analysis based on the provided info."
 
         response: Answers = await self.client.chat.completions.create(  # type: ignore
             model=model_type_override.value

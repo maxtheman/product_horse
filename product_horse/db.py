@@ -117,6 +117,7 @@ class Transcription(UnvalidatedTranscription, table=True):
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     created_at: datetime = Field(default=datetime.utcnow(), nullable=False)
     updated_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
+    embedded: Optional[bool] = Field(default=False)
     utterances: list["Utterance"] = Relationship(
         back_populates="transcription",
         sa_relationship_kwargs={"cascade": "all, delete-orphan"},
@@ -221,7 +222,23 @@ class AbstractDatabase(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def get_transcriptions(self, user_id: Union[str, UUID]) -> Sequence[Transcription]:
+    def get_transcription(
+        self, transcription_id: Union[str, UUID]
+    ) -> Optional[Transcription]:
+        """Retrieves a transcription from the database."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def update_transcription(
+        self, transcription_id: UUID, values_to_update: dict[str, Any]
+    ) -> Transcription:
+        """Updates a transcription in the database."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_transcriptions(
+        self, user_id: Union[str, UUID], transcription_ids: Optional[List[UUID]] = None
+    ) -> Sequence[Transcription]:
         """Retrieves all transcriptions and associated user information from the database."""
         raise NotImplementedError
 
@@ -235,6 +252,11 @@ class AbstractDatabase(ABC):
     @abstractmethod
     def get_user(self, user_id: Union[str, UUID]) -> Optional[User]:
         """Retrieves a user from the database."""
+        raise NotImplementedError
+    
+    @abstractmethod
+    def get_words_from_utterance_ids(self, utterance_ids: List[UUID]) -> List[Word]:
+        """Retrieves words from a list of utterance IDs."""
         raise NotImplementedError
 
     @abstractmethod
@@ -283,8 +305,19 @@ class SqlModelDatabase(AbstractDatabase):
             SQLModel.metadata.create_all(self.database.engine)
 
         def run_migrations(self) -> None:
-            # Implement migration logic here
-            pass
+            from sqlalchemy import MetaData, inspect, text
+
+            inspector = inspect(self.database.engine)
+            columns = inspector.get_columns("transcription")
+            column_names = [column["name"] for column in columns]
+            if "embedded" not in column_names:
+                with Session(self.database.engine) as session:
+                    response = session.execute(
+                        text(
+                            "ALTER TABLE transcription ADD COLUMN embedded BOOLEAN DEFAULT FALSE"
+                        )
+                    )
+                    session.commit()
 
         def close(self) -> None:
             self.database.engine.dispose()
@@ -395,14 +428,55 @@ class SqlModelDatabase(AbstractDatabase):
                     session.refresh(word)
             return valid_transcription
 
-    def get_transcriptions(self, user_id: Union[str, UUID]) -> Sequence[Transcription]:
+    def get_transcription(
+        self, transcription_id: Union[str, UUID]
+    ) -> Optional[Transcription]:
         with Session(self.engine) as session:
-            transcript_with_file_meta = (
-                select(Transcription)
-                .join(FileMetadata)
-                .where(FileMetadata.user_id == user_id)
-            )
+            return session.exec(
+                select(Transcription).where(Transcription.id == transcription_id)
+            ).first()
+
+    def get_transcriptions(
+        self,
+        user_id: Optional[Union[str, UUID]] = None,
+        transcription_ids: Optional[List[UUID]] = None,
+    ) -> Sequence[Transcription]:
+        with Session(self.engine) as session:
+            if transcription_ids:
+                transcript_with_file_meta = (
+                    select(Transcription)
+                    .join(FileMetadata)
+                    .options(joinedload(Transcription.file_metadata))
+                    .where(col(Transcription.id).in_(transcription_ids))
+                )
+            else:
+                transcript_with_file_meta = (
+                    select(Transcription)
+                    .join(FileMetadata)
+                    .options(joinedload(Transcription.file_metadata))
+                    .where(FileMetadata.user_id == user_id)
+                )
             return session.exec(transcript_with_file_meta).all()
+
+    def update_transcription(
+        self, transcription_id: UUID, values_to_update: dict[str, Any]
+    ) -> Transcription:
+        with Session(self.engine) as session:
+            transcription = session.exec(
+                select(Transcription).where(Transcription.id == transcription_id)
+            ).first()
+            if transcription is None:
+                raise ValueError(f"Transcription with id {transcription_id} not found")
+            for key, value in values_to_update.items():
+                setattr(transcription, key, value)
+            session.add(transcription)
+            session.commit()
+            session.refresh(transcription)
+            return transcription
+        
+    def get_words_from_utterance_ids(self, utterance_ids: List[UUID]) -> List[Word]:
+        with Session(self.engine) as session:
+            return session.exec(select(Word).where(col(Word.utterance_id).in_(utterance_ids))).all()
 
     def get_user(self, user_id: str | UUID) -> Optional[User]:
         with Session(self.engine) as session:
@@ -449,6 +523,8 @@ class SqlModelDatabase(AbstractDatabase):
                 return transcripts
             elif mode == "user_id":
                 raise NotImplementedError
+            else:
+                raise ValueError(f"Invalid mode: {mode}")
 
     def get_latest_schema(self) -> Optional[Schema]:
         with Session(self.engine) as session:

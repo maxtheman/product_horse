@@ -14,3 +14,7 @@ temp-videos/
 
 .hypothesis/
 
+chroma_db/chroma.sqlite3
+*.bin
+*pickle
+*.mp4

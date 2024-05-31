@@ -26,7 +26,7 @@ from product_horse.db import (
 )
 from .audio_video import AudioEditor, AssemblyAiTranscript
 from .extraction import AIModelClient, Questions, Answers
-from .search import get_nodes_from_transcripts, embed_and_augment_nodes, get_utterances_from_query
+from .search import SearchEngine
 
 
 # %% ../nbs/08_api.ipynb 4
@@ -113,7 +113,7 @@ async def transcribe_file_and_extract_speakers(
     return transcription, speaker_names
 
 # %% ../nbs/08_api.ipynb 6
-def create_and_save_schema(
+async def create_and_save_schema(
     text: str, db: AbstractDatabase, ai_model_client: AIModelClient
 ) -> Schema:
     """
@@ -127,7 +127,7 @@ def create_and_save_schema(
     Returns:
         Schema: The saved schema object.
     """
-    questions = ai_model_client.create_schema(text)
+    questions = await ai_model_client.create_schema(text)
     unvalidated_schema = UnvalidatedSchema(
         input_text=text, json_schema=questions.model_dump()
     )
@@ -166,13 +166,17 @@ async def extract_info_from_transcriptions(
     return answers
 
 # %% ../nbs/08_api.ipynb 8
-async def get_relevant_utterances_from_query(query: str, transcripts: List[Transcription]) -> List[Utterance]:
+async def get_relevant_utterances_from_query(query: str, transcripts: List[Transcription], db: AbstractDatabase) -> List[Utterance]:
     """
     Returns time-sorted utterances from a query
     """
-    nodes = await get_nodes_from_transcripts(transcripts)
-    nodes = await embed_and_augment_nodes(nodes)
-    utterances = get_utterances_from_query(query, nodes)
+    if transcripts is None:
+        raise ValueError("transcripts cannot be None")
+    #allow for several clips from each transcript
+    clips_requested = int(max(len(transcripts)*2, 50))
+    search_engine = SearchEngine(seconds_buffer=8, similarity_top_k=clips_requested, db=db) 
+    utterances = await search_engine.get_utterances_from_query(query, transcripts)
+
     return utterances
 
 
