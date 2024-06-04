@@ -272,7 +272,7 @@ def make_word_clips_from_file_path_and_words(
         )
         duration = word_end_adj - word_start_adj
         word_clip = word_clip.set_duration(
-            duration + gap_between_words
+            duration + gap_between_words # gap between words seems to be pushing a little too far ahead vs audio, revisit
         ) # setting position here doesn't seem to work at all
         word_clips.append(word_clip)
         gap_between_words = word_start_adj - previous_word_end

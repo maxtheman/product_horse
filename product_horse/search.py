@@ -526,7 +526,7 @@ class SearchEngine:
         return ExtendedQueryBundle(query_str=query, transcription_ids=transcript_ids)
 
     async def get_utterances_from_query(
-        self, query: str, transcripts: List[Transcription]
+        self, query: str, transcripts: List[Transcription], db: AbstractDatabase
     ) -> List[Utterance]:
         "Returns time-sorted utterances from a query"
         vector_store = self.vector_store
@@ -547,18 +547,8 @@ class SearchEngine:
         query_bundle.seconds_buffer = self.seconds_buffer
         query_bundle.similarity_top_k = self.similarity_top_k
         result = query_engine.retrieve(query_bundle)
-        utterances: List[Utterance] = []
-        for node_with_score in result:
-            node = node_with_score.node
-            utterances.append(
-                Utterance(
-                    id=node.id_,
-                    text=node.text,
-                    confidence=node.metadata["confidence"],
-                    start=int(node.metadata["start_seconds"]),
-                    end=int(node.metadata["end_seconds"]),
-                    speaker=node.metadata["speaker"],
-                    transcription_id=node.metadata["transcript_id"],
-                )
-            )
+        utterance_ids = [node.node.id_ for node in result]
+        utterances = db.get_utterances(utterance_ids)
         return utterances
+
+
