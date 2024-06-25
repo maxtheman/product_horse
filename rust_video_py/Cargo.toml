@@ -1,0 +1,19 @@
+[package]
+name = "rust_video_processor"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "rust_video_processor"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.18", features = ["extension-module"] }
+numpy = "0.18"
+openh264 = "0.4"
+av-format = "0.3"
+av-codec = "0.3"
+av-data = "0.3"
+
+[build-dependencies]
+pyo3-build-config = "0.18"

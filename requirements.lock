@@ -194,6 +194,8 @@ gradio==4.23.0
     # via product-horse
 gradio-client==0.14.0
     # via gradio
+graphql-core==3.2.3
+    # via strawberry-graphql
 greenlet==3.0.3
     # via sqlalchemy
 grpcio==1.62.1
@@ -318,6 +320,8 @@ kiwisolver==1.4.5
     # via matplotlib
 kubernetes==29.0.0
     # via chromadb
+libcst==1.4.0
+    # via strawberry-graphql
 litellm==1.34.5
     # via product-horse
 llama-cpp-python==0.2.57
@@ -610,6 +614,7 @@ pygments==2.17.2
     # via ipython
     # via nbconvert
     # via rich
+    # via strawberry-graphql
 pymupdf==1.23.26
     # via llama-index-readers-file
 pymupdfb==1.23.22
@@ -629,6 +634,7 @@ python-dateutil==2.9.0.post0
     # via matplotlib
     # via pandas
     # via posthog
+    # via strawberry-graphql
 python-dotenv==1.0.1
     # via litellm
     # via product-horse
@@ -637,6 +643,7 @@ python-json-logger==2.0.7
     # via jupyter-events
 python-multipart==0.0.9
     # via gradio
+    # via strawberry-graphql
 pytz==2024.1
     # via pandas
 pyyaml==6.0.1
@@ -648,6 +655,7 @@ pyyaml==6.0.1
     # via huggingface-hub
     # via jupyter-events
     # via kubernetes
+    # via libcst
     # via llama-index-core
     # via nbdev
     # via uvicorn
@@ -687,6 +695,7 @@ rfc3986-validator==0.1.1
     # via jupyter-events
 rich==13.7.1
     # via instructor
+    # via strawberry-graphql
     # via typer
 rpds-py==0.18.0
     # via jsonschema
@@ -739,6 +748,9 @@ stack-data==0.6.3
     # via ipython
 starlette==0.36.3
     # via fastapi
+    # via strawberry-graphql
+strawberry-graphql==0.235.0
+    # via product-horse
 striprtf==0.0.26
     # via llama-index-readers-file
 sympy==1.12
@@ -808,6 +820,7 @@ typer==0.9.4
     # via chromadb
     # via gradio
     # via instructor
+    # via strawberry-graphql
 types-python-dateutil==2.9.0.20240316
     # via arrow
 typing-extensions==4.10.0
@@ -826,6 +839,7 @@ typing-extensions==4.10.0
     # via pydantic
     # via pydantic-core
     # via sqlalchemy
+    # via strawberry-graphql
     # via torch
     # via typer
     # via typing-inspect
@@ -844,6 +858,7 @@ urllib3==2.2.1
 uvicorn==0.29.0
     # via chromadb
     # via gradio
+    # via strawberry-graphql
 uvloop==0.19.0
     # via uvicorn
 watchdog==4.0.0
