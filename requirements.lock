@@ -6,6 +6,7 @@
 #   features: []
 #   all-features: false
 #   with-sources: false
+#   generate-hashes: false
 
 -e file:.
 accelerate==0.28.0
@@ -410,6 +411,7 @@ multidict==6.0.5
     # via yarl
 multiprocess==0.70.16
     # via datasets
+    # via product-horse
 mypy-extensions==1.0.0
     # via typing-inspect
 nbclient==0.10.0
@@ -450,8 +452,10 @@ numpy==1.24.4
     # via matplotlib
     # via moviepy
     # via onnxruntime
+    # via opencv-python
     # via pandas
     # via pyarrow
+    # via scipy
     # via seewav
 oauthlib==3.2.2
     # via kubernetes
@@ -463,6 +467,8 @@ openai==1.14.3
     # via litellm
     # via llama-index-core
     # via llama-index-legacy
+    # via product-horse
+opencv-python==4.10.0.84
     # via product-horse
 opentelemetry-api==1.24.0
     # via chromadb
@@ -535,7 +541,7 @@ pexpect==4.9.0
     # via ipython
 pickleshare==0.7.5
     # via ipython
-pillow==10.2.0
+pillow==10.3.0
     # via gradio
     # via imageio
     # via llama-index-core
@@ -578,6 +584,8 @@ pyasn1==0.6.0
     # via rsa
 pyasn1-modules==0.4.0
     # via google-auth
+pyav==12.1.0
+    # via product-horse
 pycairo==1.26.0
     # via seewav
 pycparser==2.21
@@ -597,6 +605,7 @@ pydantic-core==2.16.3
     # via pydantic
 pydub==0.25.1
     # via gradio
+    # via product-horse
 pygments==2.17.2
     # via ipython
     # via nbconvert
@@ -688,6 +697,8 @@ ruff==0.3.4
     # via gradio
 safetensors==0.4.2
     # via accelerate
+scipy==1.14.0
+    # via product-horse
 seewav==0.1.0
     # via product-horse
 semantic-version==2.10.0

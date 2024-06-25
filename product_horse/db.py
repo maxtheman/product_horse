@@ -3,9 +3,9 @@
 # %% auto 0
 __all__ = ['STRINGS_TO_SANITIZE', 'ValidString', 'ValidPath', 'TModelOut', 'validate_file_path', 'sanitize_strings',
            'UnvalidatedUser', 'User', 'UnvalidatedFileMetadata', 'FileMetadata', 'UnvalidatedWord', 'WordClipLink',
-           'Word', 'UnvalidatedUtterance', 'Utterance', 'UnvalidatedTranscription', 'Transcription',
-           'UnvalidatedSchema', 'Schema', 'UnvalidatedVideo', 'Video', 'UnvalidatedClip', 'Clip', 'AbstractDatabase',
-           'SqlModelDatabase']
+           'Word', 'UtteranceBase', 'UtteranceSegment', 'UnvalidatedUtterance', 'Utterance', 'UnvalidatedTranscription',
+           'Transcription', 'UnvalidatedSchema', 'Schema', 'UnvalidatedVideo', 'RenderStatus', 'Video', 'VideoType',
+           'UnvalidatedClip', 'Clip', 'AbstractDatabase', 'SqlModelDatabase']
 
 # %% ../nbs/07_db.ipynb 3
 from typing import (
@@ -17,19 +17,21 @@ from typing import (
     Type,
     TypeVar,
     Union,
-    ForwardRef,
     Literal,
+    Tuple,
 )
+from enum import Enum
 from typing_extensions import Annotated
 from abc import ABC, abstractmethod
-from sqlalchemy import BigInteger
+from sqlalchemy import BigInteger, event
 from sqlalchemy.orm import selectinload, joinedload
-from pydantic import BaseModel
+from pydantic import field_validator
 from pydantic.functional_validators import BeforeValidator
 from sqlmodel import Field, Session, SQLModel, create_engine, select, col, Relationship
 from datetime import datetime
 from uuid import uuid4, UUID
-from sqlalchemy import Column, JSON
+from sqlalchemy import Column, JSON, case
+
 import re
 
 # %% ../nbs/07_db.ipynb 4
@@ -47,6 +49,7 @@ def sanitize_strings(v: str) -> str:
     for string in STRINGS_TO_SANITIZE:
         v = v.replace(string, "")
     return v
+
 
 
 # https://docs.pydantic.dev/latest/concepts/validators/#annotated-validators
@@ -105,23 +108,46 @@ class Word(UnvalidatedWord, table=True):
     utterance: "Utterance" = Relationship(back_populates="words")
     clips: List["Clip"] = Relationship(back_populates="words", link_model=WordClipLink)
 
-
-class UnvalidatedUtterance(SQLModel):
+#Base class -- do not use directly
+class UtteranceBase(SQLModel):
     confidence: float
     end: int = Field(sa_column=Column(BigInteger))
     speaker: ValidString = Field(default=None)
     start: int = Field(sa_column=Column(BigInteger))
     text: ValidString = Field(default=None)
 
+class UtteranceSegment(UtteranceBase): #mocking the Utterance without actually needing db connects
+    """
+    This is a mock class for creating utterance segments from a transcription.
+    It is not a database model and does not have a corresponding table.
+    """
+    id: UUID | None = Field(default=None)
+    transcription_id: UUID = Field(default=None)
+    transcription: "Transcription"
+    words: list["Word"]
+    custom_start: float | None = None
+    custom_end: float | None = None
 
-class Utterance(UnvalidatedUtterance, table=True):
+class UnvalidatedUtterance(UtteranceBase):
+    words: list["Word"] | list["UnvalidatedWord"]
+
+
+class Utterance(UtteranceBase, table=True):
     id: UUID = Field(default_factory=uuid4, primary_key=True)
-    words: list["Word"] = Relationship(
+    transcription: "Transcription" = Relationship(back_populates="utterances")
+    transcription_id: UUID = Field(default=None, foreign_key="transcription.id")
+    words:list["Word"] = Relationship(
         back_populates="utterance",
         sa_relationship_kwargs={"cascade": "all, delete-orphan"},
     )
-    transcription: "Transcription" = Relationship(back_populates="utterances")
-    transcription_id: UUID = Field(default=None, foreign_key="transcription.id")
+    # relationship field lengths aren't validatable in sqlmodel :-/
+    # PydanticUserError: Decorators defined with incorrect fields: __main__.Utterance:4797847184.check_words_length (use check_fields=False if you're inheriting from the model and intended this)
+    # @field_validator('words')
+    # def check_words_length(cls, values: list["Word"]) -> list["Word"]:
+    #     if not values:
+    #         raise ValueError("Utterance must have at least one word.")
+    #     return values
+
 
 
 class UnvalidatedTranscription(SQLModel):
@@ -158,33 +184,56 @@ class Schema(UnvalidatedSchema, table=True):
 class UnvalidatedVideo(SQLModel):
     duration: float
     title: ValidString = Field(default=None)
-
-
-class Video(UnvalidatedVideo, table=True):
-    id: UUID = Field(default_factory=uuid4, primary_key=True)
     file_path: str | None = Field(
         default=None
     )  # would like to use better validation here, but there seems to be a bug in sqlmodel https://github.com/tiangolo/sqlmodel/issues/67
+    resolution_x: int | None = Field(default=None)
+    resolution_y: int | None = Field(default=None)
+    fps: int | None = Field(default=None)
+
+class RenderStatus(str, Enum):
+    pending = "pending"
+    processing = "processing"
+    complete = "complete"
+    failed = "failed"
+
+class Video(UnvalidatedVideo, table=True):
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
     created_at: datetime = Field(default=datetime.utcnow(), nullable=False)
     updated_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
     clips: List["Clip"] = Relationship(
         back_populates="video", sa_relationship_kwargs={"cascade": "all, delete-orphan"}
     )
+    render_status: RenderStatus = Field(default=RenderStatus.pending)
+
+
+class VideoType(str, Enum):
+    video = "video"
+    audio = "audio"
 
 
 class UnvalidatedClip(SQLModel):
     utterance_start: float
     utterance_end: float
     duration: float
-    text: ValidString
+    fps: int
+    resolution_x: int
+    resolution_y: int
     speaker_role: Optional[str] = None
+    metadata_to_render: Optional[str] = None
+    video_type: VideoType
+    file_path: str | None = Field(default=None)
+
+
+    @property
+    def resolution(self) -> Tuple[int, int]:
+        return (self.resolution_x, self.resolution_y)
 
 
 class Clip(UnvalidatedClip, table=True):
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     # clip is child to both words AND a video
-    # Set of words. May be from difference utterances and transcripts. Consecutive words from same utterance will be cut together.
-    file_path: str | None = Field(default=None)
+    # Set of words. Theoretically be from different utterances and transcripts. Consecutive words from same utterance will be cut together. in audio_video logic
     words: List[Word] = Relationship(back_populates="clips", link_model=WordClipLink)
     video_id: UUID = Field(default=None, foreign_key="video.id")
     video: Video = Relationship(back_populates="clips")
@@ -260,7 +309,7 @@ class AbstractDatabase(ABC):
     def get_file_metadata_from_list_of_transcript_ids(
         self, transcript_ids: List[str]
     ) -> Sequence[FileMetadata]:
-        """Retrieves metadata about a file from the database."""
+        """Retrieves metadata about a file from the database. Returns results in the order of the input list"""
         raise NotImplementedError
 
     # TRANSCRIPTIONS
@@ -311,7 +360,7 @@ class AbstractDatabase(ABC):
     def get_words_from_utterance_ids(self, utterance_ids: List[UUID]) -> Sequence[Word]:
         """Retrieves words from a list of utterance IDs."""
         raise NotImplementedError
-    
+
     @abstractmethod
     def get_utterances(self, utterance_ids: List[UUID]) -> Sequence[Utterance]:
         """Retrieves utterances from a list of utterance IDs."""
@@ -350,7 +399,7 @@ class AbstractDatabase(ABC):
 
     @abstractmethod
     def save_clip(
-        self, words: List[Word], clip: UnvalidatedClip, video_id: UUID
+        self, words: List[Word], clip: UnvalidatedClip, video_id: UUID | str
     ) -> Clip:
         """Saves a clip to the database."""
         raise NotImplementedError
@@ -361,7 +410,7 @@ class AbstractDatabase(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def save_video(self, video: UnvalidatedVideo) -> Video:
+    def save_video(self, video: Union[UnvalidatedVideo, Video]) -> Video:
         """Saves a video to the database."""
         raise NotImplementedError
 
@@ -370,7 +419,7 @@ class AbstractDatabase(ABC):
         """Retrieves a video from the database."""
         raise NotImplementedError
 
-# %% ../nbs/07_db.ipynb 11
+# %% ../nbs/07_db.ipynb 9
 TModelOut = TypeVar("TModelOut", bound=SQLModel)
 
 
@@ -387,19 +436,62 @@ class SqlModelDatabase(AbstractDatabase):
             SQLModel.metadata.create_all(self.database.engine)
 
         def run_migrations(self) -> None:
-            from sqlalchemy import MetaData, inspect, text
-
+            from sqlalchemy import inspect
             inspector = inspect(self.database.engine)
-            columns = inspector.get_columns("transcription")
-            column_names = [column["name"] for column in columns]
-            if "embedded" not in column_names:
+            
+            # Migrate transcription table
+            self._migrate_table("transcription", [
+                ("embedded", "BOOLEAN DEFAULT FALSE")
+            ])
+
+            # Migrate video table
+            self._migrate_table("video", [
+                ("resolution_x", "INTEGER"),
+                ("resolution_y", "INTEGER"),
+                ("fps", "INTEGER"),
+                ("render_status", "VARCHAR(20)")
+            ])
+
+            # Migrate clip table
+            self._migrate_table("clip", [
+                ("fps", "INTEGER"),
+                ("resolution_x", "INTEGER"),
+                ("resolution_y", "INTEGER"),
+                ("metadata_to_render", "VARCHAR(255) DEFAULT NULL"),
+                ("video_type", "VARCHAR(20) NOT NULL")
+            ])
+            self._drop_column_if_exists("clip", "text")
+
+        def _migrate_table(self, table_name: str, new_columns: List[Tuple[str, str]]) -> None:
+            from sqlalchemy import inspect, text
+            inspector = inspect(self.database.engine)
+            existing_columns = [column["name"] for column in inspector.get_columns(table_name)]
+            
+            for column_name, column_type in new_columns:
+                if column_name not in existing_columns:
+                    with Session(self.database.engine) as session:
+                        session.execute(
+                            text(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
+                        )
+                        session.commit()
+                        print(f"Added column {column_name} to {table_name}")
+                else:
+                    print(f"Column {column_name} already exists in {table_name}")
+        
+        def _drop_column_if_exists(self, table_name: str, column_name: str) -> None:
+            from sqlalchemy import inspect, text
+            inspector = inspect(self.database.engine)
+            existing_columns = [column["name"] for column in inspector.get_columns(table_name)]
+            
+            if column_name in existing_columns:
                 with Session(self.database.engine) as session:
                     session.execute(
-                        text(
-                            "ALTER TABLE transcription ADD COLUMN embedded BOOLEAN DEFAULT FALSE"
-                        )
+                        text(f"ALTER TABLE {table_name} DROP COLUMN {column_name}")
                     )
                     session.commit()
+                    print(f"Dropped column {column_name} from {table_name}")
+            else:
+                print(f"Column {column_name} does not exist in {table_name}")
 
         def close(self) -> None:
             self.database.engine.dispose()
@@ -464,11 +556,16 @@ class SqlModelDatabase(AbstractDatabase):
         self, transcript_ids: List[str]
     ) -> Sequence[FileMetadata]:
         with Session(self.engine) as session:
+            order_case = case(
+                {transcript_id: index for index, transcript_id in enumerate(transcript_ids)},
+                value=Transcription.id
+            )
             return session.exec(
                 select(FileMetadata)
                 .options(joinedload(FileMetadata.transcription))  # type: ignore - selectinload type is weird
                 .join(Transcription)
                 .where(col(Transcription.id).in_(transcript_ids))
+                .order_by(order_case)
             ).all()
 
     def save_transcription(
@@ -479,36 +576,24 @@ class SqlModelDatabase(AbstractDatabase):
         with Session(self.engine) as session:
             valid_transcription = Transcription.model_validate(transcription)
             session.add(valid_transcription)
+            valid_transcription.utterances.extend([Utterance.model_validate(utterance) for utterance in utterances])
+            # for utterance in valid_transcription.utterances:
+            #     if len(utterance.words) > 0:
+            #         for word in utterance.words:
+            #             valid_word: Word = Word.model_validate(word)
+            #             utterance.words.append(valid_word)
             session.commit()
             session.refresh(valid_transcription)
-
-            valid_utterances = [
-                Utterance.model_validate(
-                    utterance.model_dump(),
-                    update={"transcription_id": valid_transcription.id},
-                )
-                for utterance in utterances
-            ]
-            session.add_all(valid_utterances)
-            session.commit()
-
-            for utterance, valid_utterance in zip(utterances, valid_utterances):
-                for word in utterance.words:  # type: ignore
-                    word = cast(UnvalidatedWord, word)
-                    valid_word = Word.model_validate(
-                        word.model_dump(),
-                        update={"utterance_id": valid_utterance.id},
-                    )
-                    session.add(valid_word)
-                    session.commit()
-            session.commit()
             # Eagerly load the associated utterances and words
-            session.refresh(valid_transcription)
-            for utterance in valid_transcription.utterances:
-                session.refresh(utterance)
-                for word in utterance.words:
-                    session.refresh(word)
-            return valid_transcription
+            transcript_with_utterances_words = session.exec(
+                select(Transcription)
+                .options(joinedload(Transcription.utterances).joinedload(Utterance.words)) #type: ignore - selectinload type is weird
+                .where(Transcription.id == valid_transcription.id)
+            ).first()
+            print('transcript_with_utterances_words', transcript_with_utterances_words)
+            if transcript_with_utterances_words is None:
+                raise ValueError(f"Transcription with id {valid_transcription.id} not found")
+            return transcript_with_utterances_words
 
     def get_transcription(
         self, transcription_id: Union[str, UUID]
@@ -561,11 +646,15 @@ class SqlModelDatabase(AbstractDatabase):
             return session.exec(
                 select(Word).where(col(Word.utterance_id).in_(utterance_ids))
             ).all()
-        
-    def get_utterances(self, utterance_ids: List[UUID] | List[str]) -> Sequence[Utterance]:
+
+    def get_utterances(
+        self, utterance_ids: List[UUID] | List[str]
+    ) -> Sequence[Utterance]:
         with Session(self.engine) as session:
             return session.exec(
-                select(Utterance).where(col(Utterance.id).in_(utterance_ids)).options(selectinload(Utterance.words)) # type: ignore - selectinload type is weird
+                select(Utterance)
+                .where(col(Utterance.id).in_(utterance_ids))
+                .options(selectinload(Utterance.words))  # type: ignore - selectinload type is weird
             ).all()
 
     def get_user(self, user_id: str | UUID) -> Optional[User]:
@@ -608,6 +697,7 @@ class SqlModelDatabase(AbstractDatabase):
                 transcripts = session.exec(
                     select(Transcription)
                     .options(selectinload(Transcription.utterances))  # type: ignore - selectinload type is weird
+                    .options(selectinload(Transcription.utterances).joinedload(Utterance.words))  # type: ignore - selectinload type is weird
                     .where(col(Transcription.file_id).in_(unique_metadata_ids))
                 ).all()
                 return transcripts
@@ -627,7 +717,7 @@ class SqlModelDatabase(AbstractDatabase):
             return session.exec(select(User)).all()
 
     def save_clip(
-        self, words: List[Word], clip: UnvalidatedClip, video_id: UUID
+        self, words: List[Word], clip: UnvalidatedClip, video_id: UUID | str
     ) -> Clip:
         """Saves a clip to the database."""
         with Session(self.engine) as session:
@@ -646,7 +736,7 @@ class SqlModelDatabase(AbstractDatabase):
             clip_query = (
                 select(Clip)
                 .where(Clip.id == valid_clip.id)
-                .options(selectinload(Clip.words)) # type: ignore - selectinload type is weird
+                .options(selectinload(Clip.words))  # type: ignore - selectinload type is weird
             )
             # need to do this extra query to load the words eagerly
             final_clip = session.exec(clip_query).first()
@@ -661,14 +751,22 @@ class SqlModelDatabase(AbstractDatabase):
                 select(Clip).where(col(Clip.video_id).in_(video_ids))
             ).all()
 
-    def save_video(self, video: UnvalidatedVideo) -> Video:
+    def save_video(self, video: Union[UnvalidatedVideo, Video]) -> Video:
         """Saves a video to the database."""
         with Session(self.engine) as session:
-            valid_video = Video.model_validate(video)
-            session.add(valid_video)
-            session.commit()
-            session.refresh(valid_video)
-            return valid_video
+            if isinstance(video, Video):
+                # If it's an existing Video instance, merge it into the session
+                merged_video = session.merge(video)
+                session.commit()
+                session.refresh(merged_video)
+                return merged_video
+            else:
+                # If it's a new UnvalidatedVideo, validate and save it
+                valid_video = Video.model_validate(video)
+                session.add(valid_video)
+                session.commit()
+                session.refresh(valid_video)
+                return valid_video
 
     def get_video(self, video_id: Union[str, UUID]) -> Optional[Video]:
         """Retrieves a video from the database."""

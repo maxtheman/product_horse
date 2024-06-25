@@ -18,3 +18,4 @@ chroma_db/chroma.sqlite3
 *.bin
 *pickle
 *.mp4
+*.db

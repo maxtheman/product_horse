@@ -5,17 +5,20 @@ __all__ = ['File', 'AudioFile', 'VideoFile', 'TextFile', 'FileSystemType', 'File
            'LocalFileSystem']
 
 # %% ../nbs/01_filesystems.ipynb 2
-from typing import Any
-from typing_extensions import Annotated
-from pydantic import BaseModel, StringConstraints
+from typing import Generator, Optional
+from pydantic import BaseModel
 from .db import User
 from dataclasses import dataclass, field
 from enum import Enum
 from abc import ABC, abstractmethod
+import shutil
+from contextlib import contextmanager
+
 
 # %% ../nbs/01_filesystems.ipynb 4
 class File(BaseModel):
     uri: str
+    content: Optional[bytes] = None
 
 
 class AudioFile(File):
@@ -48,6 +51,7 @@ class FilePathType(Enum):
     USER_ID_BASE = "user_id"
     USER_ID_BASE_AUDIO = "user_id_audio"
     USER_ID_BASE_VIDEO = "user_id_video"
+    USER_ID_BASE_CLIPS = "user_id_clips"
     USER_ID_BASE_TEXT = "user_id_text"
     USER_ID_BASE_PDF = "user_id_pdf"
 
@@ -55,6 +59,12 @@ class FilePathType(Enum):
 @dataclass
 class AbstractFileSystem(ABC):
     base_path: str = field(default="")
+
+    @property
+    @abstractmethod
+    def tenant_video_path(self) -> str:
+        """The path for tenant-scoped videos"""
+        raise NotImplementedError("This method should be implemented by subclasses")
 
     @abstractmethod
     def build_user_path(self, user: User, file_path_type: FilePathType) -> str:
@@ -73,7 +83,7 @@ class AbstractFileSystem(ABC):
 
     def sanitize_filename(self, filename: str) -> str:
         """Use as an add-on to sanitize characters. Replace non-ASCII characters with their Unicode codepoint representations."""
-        return filename.replace("/", "_").replace("\\", "_")
+        return filename.replace("/", "_").replace("\\", "_").replace(" ", "_")
 
     @abstractmethod
     def validate_access(self, user: User, path: str) -> bool:
@@ -92,7 +102,10 @@ class AbstractFileSystem(ABC):
         raise NotImplementedError("This method should be implemented by subclasses")
     
     @abstractmethod
-    def read_file(self, path: str) -> File:
+    def read_file(self, path: str, load_content: bool = False) -> File:
+        """Reads the file at the specified path.
+        If load_content is True, the content of the file is loaded into memory.
+        Otherwise, the content is set to None."""
         raise NotImplementedError("This method should be implemented by subclasses")
 
     @abstractmethod
@@ -101,6 +114,14 @@ class AbstractFileSystem(ABC):
 
     @abstractmethod
     def delete_file(self, path: str) -> File:
+        raise NotImplementedError("This method should be implemented by subclasses")
+    
+    @abstractmethod
+    @contextmanager
+    def temporary_user_directory(self, user: User) -> Generator[str, None, None]:
+        """Expose a temporary directory for the user to store files in.
+        This directory should be deleted after the user has finished with it.
+        should be used as `with storage.temporary_user_directory(user) as tmp_dir:`"""
         raise NotImplementedError("This method should be implemented by subclasses")
 
 # %% ../nbs/01_filesystems.ipynb 6
@@ -111,9 +132,13 @@ import tempfile
 @dataclass
 class LocalFileSystem(AbstractFileSystem):
     base_path: str = field(
-        default=tempfile.mkdtemp(),
-        metadata={"help": "The base path for the local file system."},
+        default="",
+        metadata={"help": "The base path for the local file system. Set to tenant_id for tenant-scoped storage"},
     )
+
+    @property
+    def tenant_video_path(self) -> str:
+        return f"{self.base_path}/videos"
 
     def build_user_path(
         self: AbstractFileSystem, user: User, file_path_type: FilePathType
@@ -128,6 +153,8 @@ class LocalFileSystem(AbstractFileSystem):
             return f"{self.base_path}/{user.id}/text"
         elif file_path_type == FilePathType.USER_ID_BASE_PDF:
             return f"{self.base_path}/{user.id}/pdf"
+        elif file_path_type == FilePathType.USER_ID_BASE_CLIPS:
+            return f"{self.base_path}/{user.id}/clips"
         else:
             raise ValueError(f"Invalid file path type: {file_path_type}")
 
@@ -149,14 +176,23 @@ class LocalFileSystem(AbstractFileSystem):
         if not self.check_exists(os.path.dirname(path)):
             raise FileNotFoundError("Location doesn't exist")
         sanitized_name = self.sanitize_characters(self.sanitize_filename(name))
+        if self.check_exists(path + "/" + sanitized_name):
+            raise FileExistsError("File already exists — use update_file instead")
+        if len(sanitized_name) == 0:
+            raise ValueError("File name cannot be empty")
         with open(path + "/" + sanitized_name, "wb") as f:
             f.write(content)
         return File(uri=path + "/" + sanitized_name)
 
-    def read_file(self: AbstractFileSystem, path: str) -> File:
+    def read_file(self: AbstractFileSystem, path: str, load_content: bool = False) -> File:
         if not os.path.isfile(path):
             raise FileNotFoundError("File does not exist")
-        return File(uri=path)
+        if load_content:
+            with open(path, "rb") as f:
+                content = f.read()
+        else:
+            content = None
+        return File(uri=path, content=content)
 
     def update_file(self: AbstractFileSystem, path: str, content: bytes) -> File:
         if not os.path.isfile(path):
@@ -168,3 +204,14 @@ class LocalFileSystem(AbstractFileSystem):
             raise FileNotFoundError("File does not exist")
         os.remove(path)
         return File(uri=path)
+        
+    @contextmanager
+    def temporary_user_directory(self, user: User) -> Generator[str, None, None]:
+        temp_dir = tempfile.mkdtemp()
+        user_temp_dir = os.path.join(temp_dir, str(user.id))
+        os.makedirs(user_temp_dir, exist_ok=True)
+        try:
+            yield user_temp_dir
+        finally:
+            shutil.rmtree(temp_dir)
+

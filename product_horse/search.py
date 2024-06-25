@@ -464,7 +464,7 @@ class SearchEngine:
     utterances = search_engine.get_utterances_from_query(query, transcripts)"""
 
     def __init__(
-        self, db: Optional[SqlModelDatabase] = None, path: str = "../chroma_db", seconds_buffer: int = 10, similarity_top_k: int = 25
+        self, db: AbstractDatabase, path: str = "../chroma_db", seconds_buffer: int = 10, similarity_top_k: int = 25
     ):
         self.db = db
         self.client_id = "hardcoded-string-right-now"
@@ -526,8 +526,8 @@ class SearchEngine:
         return ExtendedQueryBundle(query_str=query, transcription_ids=transcript_ids)
 
     async def get_utterances_from_query(
-        self, query: str, transcripts: List[Transcription], db: AbstractDatabase
-    ) -> List[Utterance]:
+        self, query: str, transcripts: Sequence[Transcription],
+    ) -> Sequence[Utterance]:
         "Returns time-sorted utterances from a query"
         vector_store = self.vector_store
         if vector_store is None:
@@ -548,7 +548,7 @@ class SearchEngine:
         query_bundle.similarity_top_k = self.similarity_top_k
         result = query_engine.retrieve(query_bundle)
         utterance_ids = [node.node.id_ for node in result]
-        utterances = db.get_utterances(utterance_ids)
+        utterances = self.db.get_utterances(utterance_ids)
         return utterances
 
 

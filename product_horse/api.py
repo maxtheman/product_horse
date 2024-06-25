@@ -2,11 +2,11 @@
 
 # %% auto 0
 __all__ = ['FileDict', 'create_and_save_schema', 'extract_info_from_transcriptions', 'get_relevant_utterances_from_query',
-           'save_files_and_transcriptions', 'extract_data_given_users', 'get_user_names_and_transcript_counts']
+           'save_files_and_transcriptions', 'extract_data_given_users', 'get_user_names_and_transcript_counts',
+           'make_video']
 
 # %% ../nbs/08_api.ipynb 3
 from typing import Any, List, TypedDict, Tuple, Sequence
-from uuid import UUID
 from product_horse.filesystems import (
     AbstractFileSystem,
     FilePathType,
@@ -24,7 +24,7 @@ from product_horse.db import (
     UnvalidatedUtterance,
     Utterance,
 )
-from .audio_video import AudioEditor, AssemblyAiTranscript
+from .audio_video import AudioEditor, AssemblyAiTranscript, make_video_from_utterances
 from .extraction import AIModelClient, Questions, Answers, QADataManager
 from .search import SearchEngine
 
@@ -169,13 +169,11 @@ async def extract_info_from_transcriptions(
 
 # %% ../nbs/08_api.ipynb 8
 async def get_relevant_utterances_from_query(
-    query: str, transcripts: List[Transcription], db: AbstractDatabase
-) -> List[Utterance]:
+    query: str, transcripts: Sequence[Transcription], db: AbstractDatabase
+) -> Sequence[Utterance]:
     """
     Returns time-sorted utterances from a query
     """
-    if transcripts is None:
-        raise ValueError("transcripts cannot be None")
     # allow for several clips from each transcript
     clips_requested = int(max(len(transcripts) * 2, 50))
     search_engine = SearchEngine(
@@ -264,3 +262,10 @@ def get_user_names_and_transcript_counts(db: AbstractDatabase) -> Sequence[tuple
         )
     assert str(last_user_id) == options[-1][1]
     return options
+
+# %% ../nbs/08_api.ipynb 12
+async def make_video(query: str, user_ids: list[str], db: AbstractDatabase) -> str:
+    transcripts = db.get_transcriptions_by_user_ids(user_ids)
+    utterances = await get_relevant_utterances_from_query(query, transcripts, db)
+    video_path = make_video_from_utterances(utterances, db, query)
+    return video_path
