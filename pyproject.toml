@@ -43,6 +43,7 @@ dependencies = [
     "pyav>=12.1.0",
     "multiprocess>=0.70.16",
     "strawberry-graphql[debug-server]>=0.235.0",
+    "passlib>=1.7.4",
 ]
 readme = "README.md"
 requires-python = ">= 3.11"
