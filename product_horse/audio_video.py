@@ -2,12 +2,11 @@
 
 # %% auto 0
 __all__ = ['word_validator', 'MoviePyClipType', 'AssemblyAiWord', 'AssemblyAiUtterance', 'AssemblyAiTranscript', 'AudioEditor',
-           'read_audio', 'envelope', 'fast_visualize', 'generate_frame', 'generate_empty_waveform',
-           'process_frame_to_memory', 'make_mp4_animation', 'put_words_over_video_subset',
-           'save_and_render_utterances_to_video', 'make_video_from_utterances']
+           'save_mp4_animation_to_file', 'put_words_over_video_subset', 'write_video', 'render_clip', 'render_clips',
+           'prepare_clips_for_video_rendering', 'create_video_from_clips']
 
 # %% ../nbs/03_audio_video.ipynb 4
-from typing import List, Tuple, cast, Union, Sequence
+from typing import List, Tuple, cast, Union, Sequence, Literal
 from pathlib import Path
 import cairo
 import subprocess as sp
@@ -18,6 +17,7 @@ from moviepy.editor import (
     AudioFileClip,
     CompositeVideoClip,
     TextClip,
+    VideoClip,
     concatenate_videoclips,
 )
 from pydantic import BaseModel, TypeAdapter
@@ -26,23 +26,26 @@ import assemblyai as aai
 import requests
 import numpy as np
 from dotenv import load_dotenv
-from multiprocess import Pool
 from product_horse.db import (
     UtteranceSegment,
-    AbstractDatabase,
     Word,
     UnvalidatedClip,
     UnvalidatedVideo,
     Video,
     RenderStatus,
     Clip,
+    FileMetadata,
     VideoType,
     User,
+    Transcription,
+    Employee,
+    CreateClip,
 )
-from .filesystems import AbstractFileSystem, FilePathType
-from uuid import UUID
+from .filesystems import FilePathType
 from rich.console import Console
-import io
+
+# from multiprocess import Pool
+# import io
 
 load_dotenv()
 
@@ -122,6 +125,8 @@ class AudioEditor:
             raise Exception(f"No text or utterances found in audio file: {file_url}")
         if transcript.status != "error" and text_well_formed:
             # Convert each utterance and its words to the correct Pydantic models
+            if not transcript.utterances:
+                raise Exception(f"No utterances found in audio file: {file_url}")
             transcript_text = "\n".join(
                 [
                     f"Speaker {utterance.speaker}: {utterance.text}"
@@ -151,211 +156,12 @@ class AudioEditor:
         pass
 
 # %% ../nbs/03_audio_video.ipynb 12
-def read_audio(audio_path, seek=None, duration=None):
-    command = ['ffmpeg', '-y', '-loglevel', 'panic']
-    if seek is not None:
-        command += ['-ss', str(seek)]
-    command += ['-i', str(audio_path)]
-    if duration is not None:
-        command += ['-t', str(duration)]
-    command += ['-f', 'f32le', '-acodec', 'pcm_f32le', '-ar', '44100', '-ac', '1', '-']
-    
-    proc = sp.Popen(command, stdout=sp.PIPE, stderr=sp.DEVNULL)
-    wav = np.frombuffer(proc.stdout.read(), dtype=np.float32)
-    return wav.reshape(-1, 1).T, 44100
-
-def envelope(wav, window, stride):
-    wav = np.pad(wav, window // 2)
-    cumsum = np.cumsum(np.maximum(wav, 0))
-    return 1.9 * (1 / (1 + np.exp(-2.5 * (cumsum[window:] - cumsum[:-window]) / window)) - 0.5)[::stride]
-
-# %% ../nbs/03_audio_video.ipynb 13
-def fast_visualize(audio, out, seek=None, duration=None, rate=60, bars=50, 
-              fg_color=(0.2, 0.5, 0.8), bg_color=(1, 1, 1), size=(640, 480)):
-    """
-    Visualize audio FAST! Drop-in replacement for seewav/visualize
-    Too buggy for use in prod. Throwing these errors:
-
-    MoviePy error: failed to read the duration of file test_output_wildfires.mp4.
-Here are the file infos returned by ffmpeg:
-
-ffmpeg version 7.0 Copyright (c) 2000-2024 the FFmpeg developers
-  built with Apple clang version 15.0.0 (clang-1500.3.9.4)
-  configuration: --prefix=/opt/homebrew/Cellar/ffmpeg/7.0 --enable-shared --enable-pthreads --enable-version3 
---cc=clang --host-cflags= --host-ldflags='-Wl,-ld_classic' --enable-ffplay --enable-gnutls --enable-gpl 
---enable-libaom --enable-libaribb24 --enable-libbluray --enable-libdav1d --enable-libharfbuzz --enable-libjxl 
---enable-libmp3lame --enable-libopus --enable-librav1e --enable-librist --enable-librubberband --enable-libsnappy 
---enable-libsrt --enable-libssh --enable-libsvtav1 --enable-libtesseract --enable-libtheora --enable-libvidstab 
---enable-libvmaf --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libx264 --enable-libx265 
---enable-libxml2 --enable-libxvid --enable-lzma --enable-libfontconfig --enable-libfreetype --enable-frei0r 
---enable-libass --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopenjpeg --enable-libopenvino 
---enable-libspeex --enable-libsoxr --enable-libzmq --enable-libzimg --disable-libjack --disable-indev=jack 
---enable-videotoolbox --enable-audiotoolbox --enable-neon
-  libavutil      59.  8.100 / 59.  8.100
-  libavcodec     61.  3.100 / 61.  3.100
-  libavformat    61.  1.100 / 61.  1.100
-  libavdevice    61.  1.100 / 61.  1.100
-  libavfilter    10.  1.100 / 10.  1.100
-  libswscale      8.  1.100 /  8.  1.100
-  libswresample   5.  1.100 /  5.  1.100
-  libpostproc    58.  1.100 / 58.  1.100
-[mov,mp4,m4a,3gp,3g2,mj2 @ 0x13d636fa0] moov atom not found
-[in#0 @ 0x13d6363f0] Error opening input: Invalid data found when processing input
-Error opening input file test_output_wildfires.mp4.
-Error opening input files: Invalid data found when processing input
-
-I think if you're really going to have this work, you'll have to write it from scratch outside of ffmpeg?
-    """
-
-    audio_path = Path(audio)
-    if not audio_path.exists():
-        raise FileNotFoundError(f"Audio file not found: {audio_path}")
-
-    out_path = Path(out)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-
-    wav, sr = read_audio(audio_path, seek=seek, duration=duration)
-    wav = wav.mean(0)
-    wav /= wav.std()
-
-    window = int(sr * 0.4 / bars)
-    stride = window // 5
-    env = envelope(wav, window, stride)
-    env = np.pad(env, (bars // 2, 2 * bars))
-
-    frames = int(rate * (len(wav) / sr))
-    smooth = np.hanning(bars)
-
-    # Pre-calculate all frame envelopes
-    all_envs = np.zeros((frames, bars))
-    for idx in range(frames):
-        pos = (idx / rate * sr) / stride / bars
-        off = int(pos)
-        loc = pos - off
-        env1 = env[off * bars:(off + 1) * bars]
-        env2 = env[(off + 1) * bars:(off + 2) * bars]
-        w = 1 / (1 + np.exp(-4 * (loc - 0.5)))
-        denv = (1 - w) * env1 + w * env2
-        all_envs[idx] = denv * smooth
-
-    print("Generating frames...")
-
-    frame_buffers = []
-    with Pool() as pool:
-        args = [(idx, all_envs[idx], fg_color, bg_color, size) for idx in range(frames)]
-        frame_buffers = list(pool.imap(process_frame_to_memory, args))
-    print(f"Generated {len(frame_buffers)} frames in memory")
-
-    print("Encoding animation...")
-    ffmpeg_cmd = [
-        "ffmpeg", "-y", "-loglevel", "warning",
-        "-hwaccel", "auto",
-        "-threads", "0",
-        "-f", "image2pipe", "-r", str(rate), "-i", "-",
-        "-i", str(audio_path.resolve()),
-        "-c:v", "libx264",
-        "-crf", "23", "-preset", "ultrafast",
-        "-c:a", "aac", "-b:a", "128k",
-        "-movflags", "+faststart",
-        "-f", "mp4",
-        "-shortest",
-        str(out_path)
-    ]
-
-    try:
-        process = sp.Popen(ffmpeg_cmd, stdin=sp.PIPE, stdout=sp.PIPE, stderr=sp.PIPE) #this is faster than subprocess
-        for frame_buffer in frame_buffers:
-            process.stdin.write(frame_buffer.getvalue())
-        process.stdin.close()
-        stdout, stderr = process.communicate()
-        if process.returncode != 0:
-            print("FFmpeg error:", stderr.decode())
-            raise RuntimeError(f"FFmpeg command failed with return code {process.returncode}")
-        print("FFmpeg output:", stdout.decode())
-    except ValueError:
-        # This can occur if FFmpeg finishes and closes the pipe before we're done writing
-        # It's usually not a problem if the video is created successfully
-        print("Warning: flush of closed file occurred, but this may not affect the output")
-    except BrokenPipeError:
-        print("Warning: Broken pipe error occurred, but this may not affect the output")
-    except Exception as e:
-        print("Error during FFmpeg encoding:", str(e), type(e))
-        raise
-
-    if not out_path.exists():
-        print(f"Output directory contents: {os.listdir(out_path.parent)}")
-        raise RuntimeError(f"Expected output file {out_path} was not created")
-    else:
-        print(f"Video saved successfully to {out_path}")
-
-@lru_cache(maxsize=1000)
-def generate_frame(env_tuple, fg_color, bg_color, size):
-
-    env = np.array(env_tuple)
-    if np.max(np.abs(env)) < 0.1:  # Adjust this threshold as needed
-        return generate_empty_waveform(fg_color, bg_color, size)
-    surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, *size)
-    ctx = cairo.Context(surface)
-    ctx.scale(*size)
-
-    ctx.set_source_rgb(*bg_color)
-    ctx.paint()
-
-    T = len(env)
-    width = 1. / (T * 1.2)
-    pad = 0.1 * width
-    delta = 2 * pad + width
-
-    ctx.set_line_width(width)
-    for step, height in enumerate(env):
-        ctx.set_source_rgb(*fg_color)
-        x = pad + step * delta
-        ctx.move_to(x, 0.5 - 0.5 * height)
-        ctx.line_to(x, 0.5)
-        ctx.stroke()
-        ctx.set_source_rgba(*fg_color, 0.8)
-        ctx.move_to(x, 0.5)
-        ctx.line_to(x, 0.5 + 0.45 * height)
-        ctx.stroke()
-
-    buffer = io.BytesIO()
-    surface.write_to_png(buffer)
-    buffer.seek(0)
-    return buffer
-
-@lru_cache(maxsize=1)
-def generate_empty_waveform(fg_color, bg_color, size):
-    surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, *size)
-    ctx = cairo.Context(surface)
-    ctx.scale(*size)
-
-    # Fill background
-    ctx.set_source_rgb(*bg_color)
-    ctx.paint()
-
-    # Draw a flat line in the middle
-    ctx.set_source_rgb(*fg_color)
-    ctx.set_line_width(0.01)
-    ctx.move_to(0, 0.5)
-    ctx.line_to(1, 0.5)
-    ctx.stroke()
-
-    buffer = io.BytesIO()
-    surface.write_to_png(buffer)
-    buffer.seek(0)
-    return buffer
-
-def process_frame_to_memory(args):
-    idx, env, fg_color, bg_color, size = args
-    return generate_frame(tuple(env), fg_color, bg_color, size)
-
-# %% ../nbs/03_audio_video.ipynb 14
-def make_mp4_animation(
+def save_mp4_animation_to_file(
     audio_path: str,
     output_path: str,
     tmp_directory: str,
     seek: int = 0,  # start at the beginning
-    duration: int = 10,  # duration in seconds
+    duration: float = 10.0,  # duration in seconds
     rate: int = 24,  # frames per second
     bars: int = 30,  # number of bars in the visualization
     fg_color: Tuple[float, float, float] = (0.2, 0.5, 0.8),  # foreground color
@@ -390,7 +196,7 @@ def make_mp4_animation(
         size=size,
     )
 
-# %% ../nbs/03_audio_video.ipynb 16
+# %% ../nbs/03_audio_video.ipynb 14
 from collections import OrderedDict
 
 MoviePyClipType = Union[VideoFileClip, AudioFileClip, CompositeVideoClip]
@@ -417,22 +223,24 @@ def _group_utterances_by_transcript_id(
     return transcript_utterances_by_id, transcript_ids
 
 
-def _get_video_file_properties(file_path: str):
+def _get_video_file_properties(
+    file_path: str,
+) -> tuple[int, Tuple[int, int], float, float]:
     clip = VideoFileClip(file_path)
     frame_rate: int = cast(int, clip.fps)
     resolution: Tuple[int, int] = cast(Tuple[int, int], clip.size)
-    duration: float = clip.duration
-    aspect_ratio: float = clip.aspect_ratio
+    duration: float = cast(float, clip.duration)
+    aspect_ratio: float = cast(float, clip.aspect_ratio)
     clip.close()
     return frame_rate, resolution, duration, aspect_ratio
 
 
-def _get_audio_file_properties(file_path: str):
+def _get_audio_file_properties(file_path: str) -> tuple[int, None, float]:
     clip = AudioFileClip(file_path)
     clip.close()
-    return clip.fps, None, clip.duration
+    return clip.fps, None, cast(float, clip.duration)
 
-# %% ../nbs/03_audio_video.ipynb 18
+# %% ../nbs/03_audio_video.ipynb 16
 def put_words_over_video_subset(
     file_path: str,
     words: Sequence[Word],
@@ -440,7 +248,7 @@ def put_words_over_video_subset(
     start: float,
     end: float = 0.0,
     position: str = "center",
-) -> Tuple[CompositeVideoClip, List[Word]]:
+) -> CompositeVideoClip:
     """Adds words to a video clip.
     - start: The starting time (in seconds) of the video segment.
     - end: The ending time (in seconds) of the video segment. If end is 0.0, the entire video from start to the end is used.
@@ -451,15 +259,15 @@ def put_words_over_video_subset(
         raise ValueError("Target resolution must be a tuple")
     if len(words) == 0:
         raise ValueError("No words to add to video")
-    clips_with_words = []
+    clips_with_words: List[MoviePyClipType] = []
     previous_word_end = 0.0
-    gap_between_words = 0.0
     # start of this video_clip should be used as 0
     try:  # catching exceptions on VideoFileClip creation
         if end > 0:
-            video_clip = VideoFileClip(
+            video_clip_full = VideoFileClip(
                 file_path, target_resolution=target_resolution
-            ).subclip(start, end)
+            )
+            video_clip = video_clip_full.subclip(start, end)
         else:
             video_clip = VideoFileClip(file_path, target_resolution=target_resolution)
         text_positions = {
@@ -477,15 +285,17 @@ def put_words_over_video_subset(
         console.print(e, style="red")
         raise e
     text_position = text_positions.get(position, (0.5, 0.5))
-    words_used: List[Word] = []
     for word in words:
         word_start = float(word.start) / 1000
         word_start_adj = word_start - start
         word_end = float(word.end) / 1000
         word_end_adj = word_end - start
-        final_end = video_clip.duration
+        final_end = cast(float, video_clip.duration)
         if word_start_adj > final_end:
-            console.print(f"word_start_adj is greater than final_end {word_start_adj} > {final_end}, {word.text}", style="red")
+            console.print(
+                f"word_start_adj is greater than final_end {word_start_adj} > {final_end}, {word.text}",
+                style="red",
+            )
             continue
         if word_end_adj > final_end:
             console.print(f"Adjusting end time for word '{word.text}'", style="yellow")
@@ -510,317 +320,274 @@ def put_words_over_video_subset(
             font="Helvetica",
             stroke_width=2,
         )
-        words_used.append(word)
         gap_before_word = word_start_adj - previous_word_end
         # Set duration to include the gap before the word
         duration = word_end_adj - word_start_adj + gap_before_word
         word_clip = word_clip.set_duration(duration)
         clips_with_words.append(word_clip)
-    
+
         previous_word_end = word_end_adj
     final_word_clip = concatenate_videoclips(clips_with_words).set_position(
         text_position
     )
     final_clip = CompositeVideoClip([video_clip, final_word_clip])
     if abs(final_clip.duration - video_clip.duration) > 0.1:  # Allow small tolerance
-        console.print(f"Adjusting final clip duration from {final_clip.duration} to {video_clip.duration}", style="yellow")
-        final_clip = final_clip.set_duration(video_clip.duration)
-    return final_clip, words_used
-
-# %% ../nbs/03_audio_video.ipynb 21
-def save_and_render_utterances_to_video(
-    original_file_path: str,
-    transcription_id: str,
-    utterances: List[UtteranceSegment],
-    duration: float,
-    frame_rate: int,
-    resolution: Tuple[int, int],
-    metadata_to_render: str,
-    video_flag: bool,
-    database: AbstractDatabase,
-    file_system: AbstractFileSystem,
-    user: User,
-    video_id: UUID | str,
-) -> Clip:
-    """Renders clips from utterances for a given transcript.
-    If video_flag is true, the clip is a video, otherwise it is an audio clip.
-    All words are pulled from the database for each utterance."""
-    console = Console()
-    if file_system.check_exists(original_file_path) is False:
-        raise ValueError(f"File not found: {original_file_path}")
-    render_buffer: List[MoviePyClipType] = []  # revisit cliptype
-    user_clip_path = file_system.build_user_path(user, FilePathType.USER_ID_BASE_CLIPS)
-    print(f"User clip path: {user_clip_path}")
-    final_clip_start = 0.0
-    final_clip_end = 0.0
-    all_words_used: List[Word] = []
-    with file_system.temporary_user_directory(user) as temp_directory:
-        temp_audio_path_base = f"{temp_directory}/audio"
-        temp_visualization_path_base = f"{temp_directory}/visualizations"
-        file_system.create_folder(temp_audio_path_base)
-        file_system.create_folder(temp_visualization_path_base)
-        last_clip_number = len(utterances) - 1
-        size = (int(resolution[1]), int(resolution[0]))
-        for clip_number, utterance in enumerate(utterances):
-            console.print(
-                f"Rendering clip {clip_number} of {last_clip_number}", style="green"
-            )
-            temp_audio_path = f"{temp_audio_path_base}/{clip_number}.mp3"
-            temp_visualization_path = (
-                f"{temp_visualization_path_base}/{clip_number}.mp4"
-            )
-            # this means that all utterance words will be pulled at this point
-            clip_words = database.get_words_from_utterance_ids([utterance.id])
-            if len(clip_words) == 0:
-                raise ValueError("No words to add to video")
-            if utterance.custom_start is not None:
-                start = utterance.custom_start / 1000
-            else:
-                start: float = float(utterance.start) / 1000
-            if utterance.custom_end is not None:
-                end = utterance.custom_end / 1000
-            else:
-                end: float = float(utterance.end) / 1000
-            duration = int(end - start)
-            if not video_flag:
-                """handle the audio file conversion to video"""
-                working_clip: MoviePyClipType = AudioFileClip(
-                    original_file_path
-                ).subclip(start, end)  # type: ignore
-                working_clip.write_audiofile(temp_audio_path)
-                working_clip.close()
-                # Visualize the audio segment
-                if (
-                    duration > 1
-                ):  # if you remove this you will get failures with exit status 254 from ffmeg
-                    make_mp4_animation(
-                        audio_path=temp_audio_path,
-                        output_path=temp_visualization_path,
-                        tmp_directory=temp_directory,
-                        duration=duration,
-                        rate=frame_rate,
-                        size=size,
-                    )
-                    word_clip, words_used = put_words_over_video_subset(
-                        file_path=temp_visualization_path,
-                        words=clip_words,
-                        target_resolution=size,
-                        start=start,
-                        # end=end, Do NOT put end here -- you want to use the entire video on this path.
-                        position="center",
-                    )
-                    render_buffer.append(word_clip)
-                    all_words_used.extend(words_used)
-                else:
-                    console.print("weird short utterance", style="red")
-            else:
-                word_clip, words_used = put_words_over_video_subset(
-                    file_path=original_file_path,
-                    words=clip_words,
-                    target_resolution=size,
-                    start=start,
-                    end=end,
-                    position="bottom-third",
-                )
-                try:
-                    frame = word_clip.get_frame(0)
-                    if frame is None:
-                        raise ValueError("Word clip has no video")
-                except Exception as e:
-                    console.print(e, style="red")
-                    raise e
-                finally:
-                    render_buffer.append(word_clip)
-                    all_words_used.extend(words_used)
-            if clip_number == 0:
-                final_clip_start = start
-            if clip_number == last_clip_number:
-                final_clip_end = end
-        if len(render_buffer) == 0:
-            raise ValueError("No clips to render")
-        console.print(f"Rendered {len(render_buffer)} clips", style="green")
-        final_clip = concatenate_videoclips(clips=render_buffer)
-        # Do NOT close the clips here
-        # for clip in render_buffer:
-        #     clip.close()
-        try:
-            final_clip.get_frame(0)
-        except Exception as e:
-            # test
-            console.print(e, style="red")
-            raise e
-    if "!" in metadata_to_render:
-        pass
-    else:
-        metadata_banner = TextClip(
-            metadata_to_render,
-            fontsize=48,
-            color="white",
-            stroke_color="black",
-            font="Helvetica",
-            stroke_width=2,
+        console.print(
+            f"Adjusting final clip duration from {final_clip.duration} to {video_clip.duration}",
+            style="yellow",
         )
-        metadata_banner = metadata_banner.set_position(
-            (0.05, 0.05),
-            relative=True,
-        ).set_duration(final_clip.duration)  # type: ignore - moviepy types are crappy
-        # CONDITIONALLY MUTATE FINAL_CLIP HERE
-        final_clip = CompositeVideoClip([final_clip, metadata_banner])
-        final_clip.fps = frame_rate
-    if not file_system.check_exists(user_clip_path):
-        file_system.create_folder(user_clip_path)
-    with final_clip as video:
-        video.write_videofile(
-            user_clip_path + f"/{transcription_id}.mp4",
-            fps=frame_rate,
+        final_clip = final_clip.set_duration(video_clip.duration)
+    return final_clip
+
+# %% ../nbs/03_audio_video.ipynb 17
+def write_video(
+    video_path: str, video_clip: VideoFileClip | VideoClip | CompositeVideoClip
+):
+    console = Console()
+    try:
+        video_clip.write_videofile(
+            video_path,
+            fps=video_clip.fps,
             audio_codec="aac",
             preset="ultrafast",
             codec="libx264",
             threads=os.cpu_count(),
-            logger=None,
         )
-    unvalidated_clip = UnvalidatedClip(
-        utterance_start=final_clip_start,
-        utterance_end=final_clip_end,
-        duration=final_clip_end - final_clip_start,
-        fps=frame_rate,
-        resolution_x=size[0],
-        resolution_y=size[1],
-        metadata_to_render=metadata_to_render,
-        video_type=VideoType.video if video_flag else VideoType.audio,
-        file_path=user_clip_path + f"/{transcription_id}.mp4",
-    )
-    clip = database.save_clip(all_words_used, unvalidated_clip, video_id)
-    return clip
+        return True
+    except Exception as e:
+        console.print(e, style="red")
+        raise e
 
-# %% ../nbs/03_audio_video.ipynb 23
-def make_video_from_utterances(
+# %% ../nbs/03_audio_video.ipynb 20
+def render_clip(
+    clip: Clip,
+    temp_directory: str,
+) -> CompositeVideoClip | VideoClip:
+    """Renders a clip from utterances for a given transcript.
+    If not all words are used, only applicable words should be added to UtteranceSegment, and custom_start/custom_end should be equal to the start/end of the first/last words.
+    If all words are used, start/end should be equal to the start/end of the entire video."""
+    if len(clip.words) == 0:
+        raise ValueError("No words to render")
+    if clip.file_path is None:
+        raise ValueError("No file path to render")
+    first_word = clip.words[0]
+    last_word = clip.words[-1]
+    if first_word.start != clip.start_ms:
+        raise ValueError("Start times of first word and custom_start do not match")
+    if last_word.end != clip.end_ms:
+        raise ValueError("End times of last word and custom_end do not match")
+    console = Console()
+    size = (int(clip.resolution_x), int(clip.resolution_y))
+    size = (
+        size[1],
+        size[0],
+    )  # explicitly reverse the tuple to match moviepy's weird resolution flipping
+    safe_end = min(clip.end_ms / 1000, clip.duration)
+    safe_start = min(clip.start_ms / 1000, safe_end)
+    if clip.video_type is not VideoType.video:
+        """handle the audio file conversion to video"""
+        if (
+            clip.duration < 900
+        ):  # if you remove this you will get failures with exit status 254 from ffmeg:
+            raise ValueError(
+                f"Duration of {clip.file_path} is too short to render a video"
+            )
+        working_clip: AudioFileClip = AudioFileClip(clip.file_path).subclip(
+            clip.start_ms, clip.end_ms
+        )  # type: ignore
+        working_clip.write_audiofile()
+        working_clip.close()
+        save_mp4_animation_to_file(
+            audio_path=temp_directory + f"/{clip.id}.mp3",
+            output_path=temp_directory + f"/{clip.id}.mp4",
+            tmp_directory=temp_directory,
+            duration=clip.duration,
+            rate=clip.fps,
+            size=size,
+        )
+        word_clip = put_words_over_video_subset(
+            file_path=temp_directory + f"/{clip.id}.mp4",
+            words=clip.words,
+            target_resolution=size,
+            start=safe_start,
+            # end=end, Do NOT put end here -- you want to use the entire video on this path, you already clipped it.
+            position="center",
+        )
+    else:
+        word_clip = put_words_over_video_subset(
+            file_path=clip.file_path,
+            words=clip.words,
+            target_resolution=size,
+            start=safe_start,
+            end=safe_end,
+            position="bottom-third",
+        )
+        try:
+            frame = word_clip.get_frame(0)
+            if frame is None:
+                raise ValueError("Word clip has no video")
+        except Exception as e:
+            console.print(e, style="red")
+            raise e
+    try:
+        word_clip.get_frame(0)
+    except Exception as e:
+        console.print(e, style="red")
+        raise e
+    print(f"Clip duration: {word_clip.duration}")
+    print(f"Clip fps: {word_clip.fps}")
+    return word_clip
+
+# %% ../nbs/03_audio_video.ipynb 21
+def render_clips(
+    clip_list: Sequence[Clip],
+    temp_directory: str,
+) -> List[CompositeVideoClip | VideoClip]:
+    """Renders clips, conditionally with metadata.
+    Clips must be saved to DB before being passed to this function."""
+    final_clips: List[CompositeVideoClip | VideoClip] = []
+    for clip in clip_list:
+        final_clip = render_clip(
+            clip,
+            temp_directory,
+        )
+        if clip.hide_metadata:
+            pass
+        else:
+            metadata_banner = TextClip(
+                clip.metadata_to_render,
+                fontsize=48,
+                color="white",
+                stroke_color="black",
+                font="Helvetica",
+                stroke_width=2,
+            )
+            metadata_banner = metadata_banner.set_position(
+                (0.05, 0.05),
+                relative=True,
+            ).set_duration(clip.duration / 1000)  # type: ignore - moviepy types are crappy
+            final_clip = CompositeVideoClip([final_clip, metadata_banner])
+            final_clip.fps = clip.fps
+        final_clips.append(final_clip)
+    return final_clips
+
+# %% ../nbs/03_audio_video.ipynb 26
+def prepare_clips_for_video_rendering(
     utterances: Sequence[UtteranceSegment],
-    database: AbstractDatabase,
-    file_system: AbstractFileSystem,
-    video_title: str = "Product Horse",
-    requesting_tenant: str = "producthorse",
-) -> Video:
-    """List of utterances to video. Utterances will be processed in the order they are recieved.
-    Add custom_start and custom_end to utterance to clip it."""
+    transcript_metadatas: Sequence[FileMetadata],
+    creator: Employee,
+    hide_metadata: bool = False,
+) -> List[CreateClip]:
+    """List of utterances to turn into video. Utterances will be processed in the order they are recieved.
+    Add custom_start and custom_end to utterance to clip it.
+    returns a list of CreateClip for saving and rendering
+    Clips returned have standardized fps, resolution, and metadata"""
     total_duration = 0.0
     default_resolution = (1280, 720)
     default_frame_rate = 30
     utterances_by_transcript_id, list_of_transcript_ids = (
         _group_utterances_by_transcript_id(utterances)
     )
-    transcript_metadatas = database.get_file_metadata_from_list_of_transcript_ids(
-        list_of_transcript_ids
-    )
     if len(transcript_metadatas) == 0:
         raise ValueError(
             f"No metadata found, important variables listed: {list_of_transcript_ids}"
         )
-    resolutions = []
-    frame_rates = []
+    resolutions: list[Tuple[int, int]] = []
+    frame_rates: list[int] = []
     max_resolution: Tuple[int, int] = default_resolution
     max_fps: int = default_frame_rate
-    final_video_name = file_system.sanitize_filename(f"{video_title}.mp4")
-    if not file_system.check_exists(file_system.tenant_video_path):
-        file_system.create_folder(file_system.tenant_video_path)
-    video: Video = database.save_video(
-        UnvalidatedVideo(
-            title=video_title,
-            duration=total_duration,
-            file_path=file_system.tenant_video_path + "/" + final_video_name,
+    clips_for_video: list[UnvalidatedClip] = []
+    for transcript_id in list_of_transcript_ids:
+        meta = next(
+            m for m in transcript_metadatas if str(m.transcription.id) == transcript_id
         )
-    )
-    if video.file_path is None:
-        raise ValueError("Video file path is None")
-    data_for_video = []
-    for meta in transcript_metadatas:
-        meta_data = {}
+        clip_utterances = utterances_by_transcript_id[transcript_id]
         video_flag = meta.file_path.endswith(".mp4")
-        if not file_system.check_exists(meta.file_path):
-            raise ValueError(f"File {meta.file_path} does not exist")
         if video_flag:
-            frame_rate, resolution, duration, aspect_ratio = _get_video_file_properties(
+            frame_rate, resolution, duration, _ = _get_video_file_properties(
                 meta.file_path
             )
         else:
-            _, resolution, duration = _get_audio_file_properties(meta.file_path)
-            frame_rate = np.max(frame_rates) if frame_rates else default_frame_rate
-        if frame_rate is None:
-            raise ValueError(
-                f"No frame rate or resolution found for {video_flag and 'video' or 'audio'} file {meta.file_path}"
+            frame_rate, resolution, duration = _get_audio_file_properties(
+                meta.file_path
             )
-        if resolution is not None:
-            resolutions.append(resolution)
-            frame_rates.append(frame_rate)
-        clip_utterances = utterances_by_transcript_id[str(meta.transcription.id)]
-        user = database.get_user(meta.user_id)
-        metadata = user.name if user is not None else None
-        if duration is None or metadata is None:
-            raise ValueError(
-                f"Duration: {duration}, metadata: {metadata} <- one of them's None."
-            )
-        if resolution is None:
-            resolution = default_resolution
-        if user is None:
-            raise ValueError("User is None")
-        total_duration += duration  # type: ignore - moviepy types are crappy
-        meta_data["video_flag"] = video_flag
-        meta_data["clip_utterances"] = clip_utterances
-        meta_data["transcription_id"] = meta.transcription.id
-        meta_data['file_path'] = meta.file_path
-        meta_data['duration'] = duration
-        meta_data["user"] = user
-        meta_data["metadata"] = metadata
+            frame_rate = int(np.max(frame_rates)) if frame_rates else default_frame_rate
 
-        data_for_video.append(meta_data)
+        file_type: Literal["video", "audio"] = "video" if video_flag else "audio"
+
+        if resolution is None:
+            file_type = "video" if video_flag else "audio"
+            if file_type == "video":
+                raise ValueError(
+                    f"No resolution found for {file_type} file: {meta.file_path}"
+                )
+            if file_type == "audio":
+                resolution = default_resolution
+                frame_rate = default_frame_rate
+
+        resolutions.append(resolution)
+        frame_rates.append(frame_rate)
+        clip_utterances = utterances_by_transcript_id[str(meta.transcription.id)]
+        clip_metadata = meta.user.name
+        total_duration += duration  # type: ignore - moviepy types are crappy
+        for utterance in clip_utterances:
+            if len(utterance.words) == 0:
+                raise ValueError("No words to add to video")
+            unvalidated_clip = CreateClip(
+                fps=frame_rate,
+                resolution_x=resolution[0],
+                resolution_y=resolution[1],
+                metadata_to_render=clip_metadata,
+                video_type=VideoType.video if video_flag else VideoType.audio,
+                file_path=meta.file_path,
+                words=utterance.words,
+                hide_metadata=hide_metadata,
+                company_id=creator.company_id,
+                created_by_id=creator.id,
+            )
+            clips_for_video.append(unvalidated_clip)
     if len(resolutions) != 0:
         max_resolution = np.amax(resolutions, axis=0)
     if len(frame_rates) != 0:
-        max_fps = np.max(frame_rates)
-    for meta_data in data_for_video:
-        print(f"Saving and rendering utterances to video for {meta_data['file_path']}")
-        save_and_render_utterances_to_video(  # not putting returned clips into memory here
-            original_file_path=meta_data["file_path"],
-            transcription_id=str(meta_data["transcription_id"]),
-            utterances=meta_data["clip_utterances"],
-            duration=meta_data["duration"],  # type: ignore - moviepy types are crappy
-            frame_rate=max_fps,
-            resolution=max_resolution,
-            metadata_to_render=meta_data["metadata"],
-            video_flag=meta_data["video_flag"],
-            database=database,
-            file_system=file_system,
-            user=meta_data["user"],
-            video_id=str(video.id),
-        )
-    # at some point the target resolution is reversed internally in moviepy for videoclips, so reverse it here to counteract that.
-    target_resolution = (int(max_resolution[1]), int(max_resolution[0]))
-    clips = database.get_clips_from_video_ids([video.id])
-    video_clips = [VideoFileClip(clip.file_path) for clip in clips]
+        max_fps = cast(int, np.max(frame_rates))
+    for clip in clips_for_video:
+        clip.resolution_x = max_resolution[0]
+        clip.resolution_y = max_resolution[1]
+        clip.fps = max_fps
+    return clips_for_video
+
+# %% ../nbs/03_audio_video.ipynb 28
+def create_video_from_clips(
+    clips: Sequence[Clip] | List[VideoClip | CompositeVideoClip],
+    video: Video,
+    max_fps: int,
+    target_resolution: Tuple[int, int],
+):
+    """
+    Create a video from a list of clips.
+    Save video after return
+    """
+    if isinstance(clips[0], Clip):
+        video_clips = [VideoFileClip(clip.file_path) for clip in clips]
+    else:
+        video_clips = clips
     final_video = concatenate_videoclips(video_clips, method="compose")
-    with final_video as video_render:
-        print(f"Writing video to {video.file_path}")
-        video_render.write_videofile(
-            video.file_path,
-            fps=max_fps,
-            audio_codec="aac",
-            preset="ultrafast",
-            codec="libx264",
-            threads=os.cpu_count(),
-            # logger=None,
-        )
-    if file_system.check_exists(video.file_path):
+    if video.file_path is None:
+        raise ValueError("Video file path is None")
+    if video.render_status == RenderStatus.complete:
+        raise ValueError("Video is already complete")
+    if video.render_status == RenderStatus.failed:
+        raise ValueError("Video failed to render")
+    try:
+        with final_video as video_render:
+            print(f"Writing video to {video.file_path}")
+            write_video(video.file_path, video_render)
         print(f"Video file {video.file_path} exists, {type(video)}")
-        video.duration = final_video.duration
         video.resolution_x = target_resolution[1]
         video.resolution_y = target_resolution[0]
         video.fps = max_fps
         video.render_status = RenderStatus.complete
-        database.save_video(video)
-    else:
-        video.status = RenderStatus.failed
-        database.save_video(video)
-        raise ValueError(
-            f"Video file {video.file_path} does not exist -- something failed"
-        )
+    except Exception as e:
+        video.render_status = RenderStatus.failed
+        raise e
     return video
