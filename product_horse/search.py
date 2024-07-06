@@ -6,9 +6,14 @@ __all__ = ['get_nodes_from_transcripts', 'embed_and_augment_nodes', 'ExtendedQue
 
 # %% ../nbs/05_search.ipynb 3
 from typing import Any, List, Sequence, Set, Optional, Dict, Coroutine, Tuple
-from .db import SqlModelDatabase, Utterance, AbstractDatabase
+from product_horse.db import (
+    SqlModelDatabase,
+    Utterance,
+    AbstractDatabase,
+    DBType,
+    Employee,
+)
 from pprint import pprint
-import uuid
 from llama_index.embeddings.openai import OpenAIEmbedding
 import chromadb
 from llama_index.vector_stores.chroma import ChromaVectorStore
@@ -21,7 +26,6 @@ from llama_index.core.schema import (
 from .db import Transcription
 from .extraction import AIModelClient, Questions, ModelType
 from llama_index.core.vector_stores.types import VectorStoreQueryResult
-import numpy as np
 from llama_index.core.ingestion import IngestionPipeline
 from llama_index.core.indices.base import BaseIndex
 from llama_index.core.data_structs import IndexDict
@@ -34,8 +38,7 @@ from llama_index.core.vector_stores.types import (
     VectorStoreQuery,
     MetadataFilter,
     MetadataFilters,
-    FilterOperator,
-    FilterCondition
+    FilterCondition,
 )
 from llama_index.core.storage.storage_context import StorageContext
 
@@ -136,11 +139,18 @@ class ExtendedQueryBundle(QueryBundle):
     seconds_buffer: int
     similarity_top_k: int
 
-    def __init__(self, query_str: str, transcription_ids: List[str], seconds_buffer: int = 10, similarity_top_k: int = 25):
+    def __init__(
+        self,
+        query_str: str,
+        transcription_ids: List[str],
+        seconds_buffer: int = 10,
+        similarity_top_k: int = 25,
+    ):
         self.query_str = query_str
         self.transcription_ids = transcription_ids
         self.seconds_buffer = seconds_buffer
         self.similarity_top_k = similarity_top_k
+
 
 class TranscriptRetriever(BaseRetriever):
     """Returned by TranscriptIndex.as_retriever(), and pass into RetrieverQueryEngine.
@@ -179,36 +189,50 @@ class TranscriptRetriever(BaseRetriever):
         else:
             nodes_list = sorted_nodes_with_scores
         return nodes_list
-    
-    def _get_nodes_based_on_relationship(self, node: BaseNode, relationship: NodeRelationship) -> Optional[TextNode]:
+
+    def _get_nodes_based_on_relationship(
+        self, node: BaseNode, relationship: NodeRelationship
+    ) -> Optional[TextNode]:
         related_node = node.relationships.get(relationship)
         if related_node:
-            related_node_refreshed = self.vector_store.client.get(ids=[related_node.node_id])
+            related_node_refreshed = self.vector_store.client.get(
+                ids=[related_node.node_id]
+            )
             import json
-            relationships_dict = json.loads(related_node_refreshed['metadatas'][0]['_node_content'])['relationships']
+
+            relationships_dict = json.loads(
+                related_node_refreshed["metadatas"][0]["_node_content"]
+            )["relationships"]
             new_node = TextNode(
-                    text=related_node_refreshed['documents'][0],
-                    id_=related_node_refreshed['ids'][0],
-                    metadata={
-                        "transcript_id": related_node_refreshed['metadatas'][0]["transcript_id"],
-                        "speaker": related_node_refreshed['metadatas'][0]["speaker"],
-                        "start_seconds": related_node_refreshed['metadatas'][0]["start_seconds"],
-                        "end_seconds": related_node_refreshed['metadatas'][0]["end_seconds"],
-                        "confidence": related_node_refreshed['metadatas'][0]["confidence"],
-                    }
-                )
-            if '3' in relationships_dict:
+                text=related_node_refreshed["documents"][0],
+                id_=related_node_refreshed["ids"][0],
+                metadata={
+                    "transcript_id": related_node_refreshed["metadatas"][0][
+                        "transcript_id"
+                    ],
+                    "speaker": related_node_refreshed["metadatas"][0]["speaker"],
+                    "start_seconds": related_node_refreshed["metadatas"][0][
+                        "start_seconds"
+                    ],
+                    "end_seconds": related_node_refreshed["metadatas"][0][
+                        "end_seconds"
+                    ],
+                    "confidence": related_node_refreshed["metadatas"][0]["confidence"],
+                },
+            )
+            if "3" in relationships_dict:
                 new_node.relationships[NodeRelationship.NEXT] = RelatedNodeInfo(
-                    node_id=relationships_dict['3']['node_id']
+                    node_id=relationships_dict["3"]["node_id"]
                 )
-            if '2' in relationships_dict:
+            if "2" in relationships_dict:
                 new_node.relationships[NodeRelationship.PREVIOUS] = RelatedNodeInfo(
-                    node_id=relationships_dict['2']['node_id']
+                    node_id=relationships_dict["2"]["node_id"]
                 )
             return new_node
 
-    
-    def _get_adjacent_nodes(self, node: BaseNode, seconds_buffer: int = 10) -> List[BaseNode]:
+    def _get_adjacent_nodes(
+        self, node: BaseNode, seconds_buffer: int = 10
+    ) -> List[BaseNode]:
         """Get adjacent nodes in the transcript within a specified time window."""
         adjacent_nodes: List[BaseNode] = [node]
 
@@ -222,12 +246,16 @@ class TranscriptRetriever(BaseRetriever):
         # Retrieve previous nodes within the time window
         prev_node_id = node.relationships.get(NodeRelationship.PREVIOUS)
         if prev_node_id:
-            prev_node_with_metadata = self.vector_store.client.get(ids=[prev_node_id.node_id])
+            prev_node_with_metadata = self.vector_store.client.get(
+                ids=[prev_node_id.node_id]
+            )
         while prev_node_id:
-            prev_node = self._get_nodes_based_on_relationship(node=node, relationship=NodeRelationship.PREVIOUS)
+            prev_node = self._get_nodes_based_on_relationship(
+                node=node, relationship=NodeRelationship.PREVIOUS
+            )
             if prev_node:
                 prev_node_metadata = prev_node.metadata
-                if prev_node_metadata['end_seconds'] < start_window_ms:
+                if prev_node_metadata["end_seconds"] < start_window_ms:
                     break
                 adjacent_nodes.insert(0, prev_node)
                 prev_node_id = prev_node.relationships.get(NodeRelationship.PREVIOUS)
@@ -238,9 +266,11 @@ class TranscriptRetriever(BaseRetriever):
         # Retrieve next nodes within the time window
         next_node_id = node.relationships.get(NodeRelationship.NEXT)
         while next_node_id:
-            next_node = self._get_nodes_based_on_relationship(node=node, relationship=NodeRelationship.NEXT)
+            next_node = self._get_nodes_based_on_relationship(
+                node=node, relationship=NodeRelationship.NEXT
+            )
             if next_node:
-                if next_node.metadata['start_seconds'] > end_window_ms:
+                if next_node.metadata["start_seconds"] > end_window_ms:
                     break
                 adjacent_nodes.append(next_node)
                 next_node_id = next_node.relationships.get(NodeRelationship.NEXT)
@@ -256,8 +286,12 @@ class TranscriptRetriever(BaseRetriever):
         adjacent_nodes: List[NodeWithScore] = []
         current_node = node_with_score.node
         if len(current_node.relationships) > 0:
-            adjacent_node_list = self._get_adjacent_nodes(current_node, seconds_buffer=seconds_buffer)
-            adjacent_node_list = self._check_query_result(result=VectorStoreQueryResult(nodes=adjacent_node_list))
+            adjacent_node_list = self._get_adjacent_nodes(
+                current_node, seconds_buffer=seconds_buffer
+            )
+            adjacent_node_list = self._check_query_result(
+                result=VectorStoreQueryResult(nodes=adjacent_node_list)
+            )
             if not adjacent_node_list:
                 return adjacent_nodes  # []
             adjacent_nodes.extend(adjacent_node_list)
@@ -273,7 +307,7 @@ class TranscriptRetriever(BaseRetriever):
             filters=[
                 MetadataFilter(key="transcript_id", value=str(transcription_id))
                 for transcription_id in query_bundle.transcription_ids
-            ]
+            ],
         )
         query_embedding = self.embed_model.get_query_embedding(query_bundle.query_str)
         query_bundle.embedding = query_embedding
@@ -281,8 +315,7 @@ class TranscriptRetriever(BaseRetriever):
             query_str=query_bundle.query_str,
             query_embedding=query_bundle.embedding,
             similarity_top_k=query_bundle.similarity_top_k,
-            filters=metadata_filters
-
+            filters=metadata_filters,
         )
         result = self.vector_store.query(vector_store_query)
         nodes_list = self._check_query_result(result)
@@ -290,12 +323,13 @@ class TranscriptRetriever(BaseRetriever):
         all_relevant_nodes: List[NodeWithScore] = []
         seen_node_ids: Set[str] = set()
         for node_with_score in nodes_list:
-            all_nodes_in_transcript = self._get_all_transcript_nodes(node_with_score, seconds_buffer=query_bundle.seconds_buffer)
+            all_nodes_in_transcript = self._get_all_transcript_nodes(
+                node_with_score, seconds_buffer=query_bundle.seconds_buffer
+            )
             for node in all_nodes_in_transcript:
                 if node.node.id_ not in seen_node_ids:
                     seen_node_ids.add(node.node.id_)
                     all_relevant_nodes.append(node)
-
 
         all_relevant_nodes.sort(
             key=lambda x: (
@@ -464,9 +498,14 @@ class SearchEngine:
     utterances = search_engine.get_utterances_from_query(query, transcripts)"""
 
     def __init__(
-        self, db: AbstractDatabase, path: str = "../chroma_db", seconds_buffer: int = 10, similarity_top_k: int = 25
+        self,
+        db: AbstractDatabase[DBType],
+        employee: Employee,
+        path: str = "../chroma_db",
+        seconds_buffer: int = 10,
+        similarity_top_k: int = 25,
     ):
-        self.db = db
+        self.db = db.as_employee(employee)
         self.client_id = "hardcoded-string-right-now"
         self.seconds_buffer = seconds_buffer
         self.similarity_top_k = similarity_top_k
@@ -490,6 +529,7 @@ class SearchEngine:
         self, transcripts: List[Transcription]
     ) -> Tuple[bool, str]:
         from uuid import UUID
+
         "Adds nodes to the vector store if they haven't been already. Returns a boolean and a string indicating the status of the operation."
         vector_store = self.vector_store
         if vector_store is None:
@@ -526,7 +566,9 @@ class SearchEngine:
         return ExtendedQueryBundle(query_str=query, transcription_ids=transcript_ids)
 
     async def get_utterances_from_query(
-        self, query: str, transcripts: Sequence[Transcription],
+        self,
+        query: str,
+        transcripts: Sequence[Transcription],
     ) -> Sequence[Utterance]:
         "Returns time-sorted utterances from a query"
         vector_store = self.vector_store
@@ -548,7 +590,5 @@ class SearchEngine:
         query_bundle.similarity_top_k = self.similarity_top_k
         result = query_engine.retrieve(query_bundle)
         utterance_ids = [node.node.id_ for node in result]
-        utterances = self.db.get_utterances(utterance_ids)
+        utterances = self.db.as_employee(employee).get_utterances(utterance_ids)
         return utterances
-
-

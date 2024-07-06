@@ -42,8 +42,10 @@ dependencies = [
     "pydub>=0.25.1",
     "pyav>=12.1.0",
     "multiprocess>=0.70.16",
-    "strawberry-graphql[debug-server]>=0.235.0",
+    "strawberry-graphql[debug-server]>=0.235.1",
     "passlib>=1.7.4",
+    "fastapi>=0.111.0",
+    "pyjwt>=2.8.0",
 ]
 readme = "README.md"
 requires-python = ">= 3.11"
@@ -53,6 +55,7 @@ prep = 'nbdev_prepare'
 test = 'nbdev_test'
 export = 'nbdev_export'
 graphql = 'strawberry server product_horse.graphql'
+dev = 'rye run fastapi dev product_horse/graphql.py'
 
 [build-system]
 requires = ["hatchling"]

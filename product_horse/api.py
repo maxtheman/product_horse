@@ -13,6 +13,7 @@ from product_horse.filesystems import (
 )
 from product_horse.db import (
     AbstractDatabase,
+    DBType,
     UnvalidatedUser,
     UnvalidatedFileMetadata,
     User,
@@ -23,8 +24,14 @@ from product_horse.db import (
     UnvalidatedSchema,
     UnvalidatedUtterance,
     Utterance,
+    UtteranceSegment,
+    Employee,
+    Video,
 )
-from .audio_video import AudioEditor, AssemblyAiTranscript, make_video_from_utterances
+from product_horse.audio_video import (
+    AudioEditor,
+    create_video_from_utterances,
+)
 from .extraction import AIModelClient, Questions, Answers, QADataManager
 from .search import SearchEngine
 
@@ -37,9 +44,9 @@ class FileDict(TypedDict):
 def _create_user_and_add_files(
     user_data: dict[str, Any],
     files: List[FileDict],
-    db: AbstractDatabase,
+    db: AbstractDatabase[DBType],
     fs: AbstractFileSystem,
-    authorized: bool = True,  # Is the user authorized to save these files?
+    employee: Employee,
 ) -> Tuple[User, List[FileMetadata]]:
     """
     Create a new user and add files for the user.
@@ -55,30 +62,36 @@ def _create_user_and_add_files(
         Tuple[User, List[FileMetadata]]: The created user object and a list of file metadata objects created.
     """
     unvalidated_user = UnvalidatedUser(**user_data)
-    print(unvalidated_user)
     user: User = db.save_user(unvalidated_user)
     metadata: List[FileMetadata] = []
 
     for file_info in files:
         file_path = fs.build_user_path(user, FilePathType.USER_ID_BASE)
-        path = fs.create_folder(file_path)
+        fs.create_folder(file_path)
         file_content = file_info["content"]
         file = fs.create_file(
-            file_path, file_content, file_info["name"], authorized=authorized
+            file_path, file_content, file_info["name"], authorized=True
         )
         # Save file metadata to database
         unvalidated_metadata = UnvalidatedFileMetadata(
-            user_id=user.id, file_name=file_info["name"], file_path=file.uri
+            user_id=user.id,
+            file_name=file_info["name"],
+            file_path=file.uri,
+            created_by_id=employee.id,
+            company_id=employee.company_id,
         )
-        metadata.append(db.save_file_metadata(unvalidated_metadata))
+        metadata.append(
+            db.as_employee(employee).save_file_metadata(unvalidated_metadata)
+        )
 
     return user, metadata
 
 # %% ../nbs/08_api.ipynb 5
 async def _transcribe_file_and_extract_speakers(
     file_metadata: FileMetadata,
-    db: AbstractDatabase,
+    db: AbstractDatabase[DBType],
     audio_editor: AudioEditor,
+    employee: Employee,
 ) -> Tuple[Transcription, List[str]]:
     """
     Transcribe an audio file, extract speaker names, and save the transcription to the database.
@@ -91,8 +104,8 @@ async def _transcribe_file_and_extract_speakers(
     Returns:
         Tuple[Transcription, List[str]]: The created transcription object and a list of extracted speaker names.
     """
-    transcription_result: AssemblyAiTranscript = await audio_editor.transcribe(
-        str(file_metadata.file_path)
+    transcription_result = await audio_editor.transcribe(
+        str(file_metadata.file_path), employee
     )
     utterances: List[UnvalidatedUtterance] = transcription_result.utterances
     speaker_names: List[str] = list(
@@ -103,9 +116,12 @@ async def _transcribe_file_and_extract_speakers(
 
     # Save transcription to the database
     unvalidated_transcription = UnvalidatedTranscription(
-        file_id=file_metadata.id, text=transcription_result.text
+        file_id=file_metadata.id,
+        text=transcription_result.text,
+        company_id=employee.company_id,
+        created_by_id=employee.id,
     )
-    transcription: Transcription = db.save_transcription(
+    transcription: Transcription = db.as_employee(employee).save_transcription(
         unvalidated_transcription, utterances
     )
 
@@ -113,7 +129,10 @@ async def _transcribe_file_and_extract_speakers(
 
 # %% ../nbs/08_api.ipynb 6
 async def create_and_save_schema(
-    text: str, db: AbstractDatabase, ai_model_client: AIModelClient
+    text: str,
+    db: AbstractDatabase[DBType],
+    ai_model_client: AIModelClient,
+    employee: Employee,
 ) -> Schema:
     """
     Create a schema from the given text using an AI model and save it to the database.
@@ -128,9 +147,12 @@ async def create_and_save_schema(
     """
     questions = await ai_model_client.create_schema(text)
     unvalidated_schema = UnvalidatedSchema(
-        input_text=text, json_schema=questions.model_dump()
+        input_text=text,
+        json_schema=questions.model_dump(),
+        company_id=employee.company_id,
+        created_by_id=employee.id,
     )
-    schema = db.save_schema(unvalidated_schema)
+    schema = db.as_employee(employee).save_schema(unvalidated_schema)
     return schema
 
 # %% ../nbs/08_api.ipynb 7
@@ -140,7 +162,7 @@ import asyncio
 async def extract_info_from_transcriptions(
     schema: Schema,
     transcriptions: Sequence[Transcription],
-    db: AbstractDatabase,
+    db: AbstractDatabase[DBType],
     ai_model_client: AIModelClient,
 ) -> Sequence[Answers]:
     """
@@ -169,7 +191,10 @@ async def extract_info_from_transcriptions(
 
 # %% ../nbs/08_api.ipynb 8
 async def get_relevant_utterances_from_query(
-    query: str, transcripts: Sequence[Transcription], db: AbstractDatabase
+    query: str,
+    transcripts: Sequence[Transcription],
+    db: AbstractDatabase[DBType],
+    employee: Employee,
 ) -> Sequence[Utterance]:
     """
     Returns time-sorted utterances from a query
@@ -177,7 +202,7 @@ async def get_relevant_utterances_from_query(
     # allow for several clips from each transcript
     clips_requested = int(max(len(transcripts) * 2, 50))
     search_engine = SearchEngine(
-        seconds_buffer=8, similarity_top_k=clips_requested, db=db
+        seconds_buffer=8, similarity_top_k=clips_requested, db=db, employee=employee
     )
     utterances = await search_engine.get_utterances_from_query(query, transcripts)
 
@@ -188,9 +213,10 @@ async def save_files_and_transcriptions(
     user_id: str,
     user_name: str,
     file_paths: list[str],
-    db: AbstractDatabase,
+    db: AbstractDatabase[DBType],
     fs: AbstractFileSystem,
     audio_editor: AudioEditor,
+    employee: Employee,
 ):
     """Save the files and transcriptions to the database."""
     if user_id is None:  # type: ignore
@@ -201,11 +227,11 @@ async def save_files_and_transcriptions(
         with open(file, "rb") as f:  # Open the file in binary mode
             content = f.read()
         file_dicts.append({"content": content, "name": file})
-    _, metadata = _create_user_and_add_files(user_data, file_dicts, db, fs)
+    _, metadata = _create_user_and_add_files(user_data, file_dicts, db, fs, employee)
     transcriptions: list[Tuple[Transcription, list[str]]] = []
     for file_metadata in metadata:
         transcription = await _transcribe_file_and_extract_speakers(
-            file_metadata, db, audio_editor
+            file_metadata, db, audio_editor, employee
         )
         transcriptions.append(transcription)
     return f"{len(transcriptions)} transcriptions saved."
@@ -213,7 +239,7 @@ async def save_files_and_transcriptions(
 # %% ../nbs/08_api.ipynb 10
 async def extract_data_given_users(
     user_ids: List[str],
-    db: AbstractDatabase,
+    db: AbstractDatabase[DBType],
     ai_model_client: AIModelClient,
     app_working_directory: str,
 ):
@@ -248,7 +274,9 @@ async def extract_data_given_users(
     return output_file_path
 
 # %% ../nbs/08_api.ipynb 11
-def get_user_names_and_transcript_counts(db: AbstractDatabase) -> Sequence[tuple[str, str]]:
+def get_user_names_and_transcript_counts(
+    db: AbstractDatabase[DBType],
+) -> Sequence[tuple[str, str]]:
     users = db.get_all_users()
     user_ids = [user.id for user in users]
     if len(user_ids) == 0:
@@ -264,8 +292,17 @@ def get_user_names_and_transcript_counts(db: AbstractDatabase) -> Sequence[tuple
     return options
 
 # %% ../nbs/08_api.ipynb 12
-async def make_video(query: str, user_ids: list[str], db: AbstractDatabase) -> str:
-    transcripts = db.get_transcriptions_by_user_ids(user_ids)
-    utterances = await get_relevant_utterances_from_query(query, transcripts, db)
-    video_path = make_video_from_utterances(utterances, db, query)
-    return video_path
+def make_video(
+    query: str,
+    user_ids: list[str],
+    db: AbstractDatabase[DBType],
+    file_system: AbstractFileSystem,
+    employee: Employee,
+    user: User,
+    utterance_segments: list[UtteranceSegment],
+    output_path: str,
+) -> Video:
+    video = create_video_from_utterances(
+        db, file_system, employee, user, utterance_segments, output_path
+    )
+    return video

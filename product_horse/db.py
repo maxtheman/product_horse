@@ -5,10 +5,10 @@ __all__ = ['STRINGS_TO_SANITIZE', 'ValidString', 'ValidPath', 'T', 'P', 'DBType'
            'sanitize_strings', 'VideoVisibility', 'PermissionLevel', 'UnvalidatedCompany', 'Company',
            'UnvalidatedEmployee', 'CreateEmployee', 'Employee', 'OrgBoundModel', 'UnvalidatedUser', 'User',
            'UnvalidatedFileMetadata', 'FileMetadata', 'UnvalidatedWord', 'WordClipLink', 'Word', 'UtteranceBase',
-           'UtteranceSegment', 'UnvalidatedUtterance', 'Utterance', 'UnvalidatedTranscription', 'Transcription',
-           'UnvalidatedSchema', 'Schema', 'UnvalidatedVideo', 'RenderStatus', 'Video', 'VideoType', 'UnvalidatedClip',
-           'CreateClip', 'Clip', 'PermissionDecorator', 'DatabaseProtocol', 'get_current_level', 'permission_required',
-           'read', 'write', 'admin', 'public', 'AbstractDatabase', 'SqlModelDatabase']
+           'UtteranceSegment', 'UnvalidatedUtterance', 'Utterance', 'UnvalidatedTranscription', 'CreateTranscription',
+           'Transcription', 'UnvalidatedSchema', 'Schema', 'UnvalidatedVideo', 'RenderStatus', 'Video', 'VideoType',
+           'UnvalidatedClip', 'CreateClip', 'Clip', 'PermissionDecorator', 'DatabaseProtocol', 'get_current_level',
+           'permission_required', 'read', 'write', 'admin', 'public', 'AbstractDatabase', 'SqlModelDatabase']
 
 # %% ../nbs/07_db.ipynb 3
 from typing import (
@@ -190,14 +190,15 @@ class UtteranceSegment(
     """
     This is a mock class for creating utterance segments from a transcription.
     It is not a database model and does not have a corresponding table.
+    The ID represents the start and end words of the original utterance.
     """
 
     id: UUID | None = Field(default=None)
     transcription_id: UUID = Field(default=None)
     transcription: "Transcription"
     words: list["Word"]
-    custom_start: int | None = None
-    custom_end: int | None = None
+    segment_start_word: "Word"
+    segment_end_word: "Word"
 
 
 class UnvalidatedUtterance(UtteranceBase):
@@ -224,6 +225,9 @@ class Utterance(UtteranceBase, table=True):
 class UnvalidatedTranscription(OrgBoundModel):
     file_id: UUID = Field(default=None, foreign_key="file_metadata.id")
     text: ValidString = Field(default=None)
+
+class CreateTranscription(UnvalidatedTranscription):
+    utterances: list[UnvalidatedUtterance]
 
 
 class Transcription(UnvalidatedTranscription, table=True):
@@ -865,6 +869,8 @@ class SqlModelDatabase(AbstractDatabase["SqlModelDatabase"]):
                     ("resolution_y", "INTEGER"),
                     ("metadata_to_render", "VARCHAR(255) DEFAULT NULL"),
                     ("video_type", "VARCHAR(20) NOT NULL"),
+                    ("render_status", "VARCHAR(20)"),
+                    ("hide_metadata", "BOOLEAN DEFAULT FALSE"),
                     *org_bound_fields,  # Include OrgBoundModel fields
                 ],
             )
@@ -943,7 +949,7 @@ class SqlModelDatabase(AbstractDatabase["SqlModelDatabase"]):
                             print(f"RLS policy already exists for table {table_name}")
 
                 session.commit()
-                print("Row-level security setup completed.")
+                print("Row-level security enabled.")
 
         def _migrate_table(
             self, table_name: str, new_columns: List[Tuple[str, str]]
