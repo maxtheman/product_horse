@@ -27,15 +27,16 @@ from typing import (
     ParamSpec,
     Concatenate,
     Generic,
-    Dict,
 )
 from functools import wraps
 from enum import Enum, IntEnum
 from typing_extensions import Annotated
 from abc import ABC, abstractmethod
 from sqlalchemy import BigInteger, text, LargeBinary
+from sqlalchemy.exc import PendingRollbackError
 from sqlalchemy.orm import selectinload, joinedload
-from pydantic import field_validator, ValidationInfo
+from psycopg2.errors import InsufficientPrivilege
+from pydantic import field_validator, ValidationInfo, ValidationError
 from pydantic.functional_validators import BeforeValidator
 from sqlmodel import Field, Session, SQLModel, create_engine, select, col, Relationship
 from datetime import datetime
@@ -44,6 +45,7 @@ from sqlalchemy import Column, JSON, case
 from passlib.hash import pbkdf2_sha256
 import warnings
 import re
+from rich.console import Console
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -60,6 +62,8 @@ STRINGS_TO_SANITIZE = ["\x00"]
 
 
 def sanitize_strings(v: str) -> str:
+    if v is None or v == "":
+        return v
     for string in STRINGS_TO_SANITIZE:
         v = v.replace(string, "")
     return v
@@ -74,9 +78,9 @@ ValidPath = Annotated[ValidString, BeforeValidator(validate_file_path)]
 
 
 class VideoVisibility(str, Enum):
-    PRIVATE = "private"
-    INTERNAL = "internal"
-    PUBLIC = "public"
+    PRIVATE = "PRIVATE"
+    INTERNAL = "INTERNAL"
+    PUBLIC = "PUBLIC"
 
 
 class PermissionLevel(IntEnum):
@@ -226,6 +230,7 @@ class UnvalidatedTranscription(OrgBoundModel):
     file_id: UUID = Field(default=None, foreign_key="file_metadata.id")
     text: ValidString = Field(default=None)
 
+
 class CreateTranscription(UnvalidatedTranscription):
     utterances: list[UnvalidatedUtterance]
 
@@ -301,6 +306,10 @@ class VideoType(str, Enum):
 
 
 class UnvalidatedClip(OrgBoundModel):
+    """
+    Clip of a video or audio file.
+    Only add the relevant words you want to include.
+    """
     fps: int
     resolution_x: int
     resolution_y: int
@@ -401,11 +410,11 @@ class DatabaseProtocol(Protocol):
 DBType = TypeVar("DBType", bound=DatabaseProtocol)
 
 
-def get_current_level(session: Session) -> str | None:
+def get_current_level(session: Session) -> PermissionLevel | None:
     current_level = session.execute(
-        text("SELECT current_setting('app.current_permission_level')")
+        text("SELECT current_setting('app.current_permission_level')::permissionlevel")
     ).scalar()
-    return current_level
+    return PermissionLevel[current_level] if current_level else None
 
 
 def permission_required(level: PermissionLevel):
@@ -414,8 +423,14 @@ def permission_required(level: PermissionLevel):
     ) -> Callable[Concatenate[DBType, P], T]:
         """Decorator to require a certain permission level for a function. Unsets employee at the end of the function."""
 
+
+
         @wraps(func)
         def wrapper(self: DBType, *args: P.args, **kwargs: P.kwargs) -> T:
+            def clear_all_vars(self: DBType):
+                new_session = self.get_session_for_employee(public=True)
+                self.permissions_clear_session_variables(new_session)
+                new_session.close()
             if level == PermissionLevel.PUBLIC:
                 with self.get_session_for_employee(public=True) as session:
                     return func(self, session, *args, **kwargs)
@@ -428,14 +443,33 @@ def permission_required(level: PermissionLevel):
                     current_employee_permissions_level = get_current_level(session)
                     if current_employee_permissions_level is None:
                         raise PermissionError("Permissions not set for this session.")
-                    if int(current_employee_permissions_level) < level.value:
+                    if not current_employee_permissions_level:
+                        raise PermissionError(
+                            "No permissions set on app.current_permission_level"
+                        )
+                    if current_employee_permissions_level < level:
                         raise PermissionError(
                             "Employee does not have sufficient permissions"
                         )
                     return func(self, session, *args, **kwargs)
+                except InsufficientPrivilege:
+                    session.rollback()
+                    clear_all_vars(self)
+                    raise PermissionError("Employee does not have sufficient permissions")
+                except Exception as error:
+                    print(error)
+                    raise error
                 finally:
-                    self.permissions_clear_session_variables(session)
+                    try:
+                        self.permissions_clear_session_variables(session)
+                    except PendingRollbackError:
+                        # Create a new session if there's a pending rollback
+                        clear_all_vars(self)
+                    except InsufficientPrivilege:
+                        clear_all_vars(self)
                     self.employee = None
+
+
 
         wrapper._permission_level = level  # type: ignore - dynamic assignment that I'm not worrying about.
         return wrapper
@@ -493,10 +527,13 @@ class AbstractDatabase(ABC, DatabaseProtocol, Generic[DBType]):
             """Closes the database connection."""
             raise NotImplementedError
 
-        @abstractmethod
-        def enable_row_level_security(self) -> None:
-            """Enables row-level security for the database."""
-            raise NotImplementedError
+    @public
+    @abstractmethod
+    def get_employee(
+        self, session: Session, employee_id: Union[str, UUID]
+    ) -> Optional[Employee]:
+        """Retrieves an employee from the database."""
+        raise NotImplementedError
 
     @public
     @abstractmethod
@@ -797,7 +834,6 @@ class SqlModelDatabase(AbstractDatabase["SqlModelDatabase"]):
     def __init__(self, database_url: str):
         self.engine = create_engine(database_url)
         SQLModel.metadata.create_all(self.engine)
-        self.operations.enable_row_level_security()
         self.employee = None
 
     class Operations(AbstractDatabase.Operations):
@@ -882,75 +918,6 @@ class SqlModelDatabase(AbstractDatabase["SqlModelDatabase"]):
             self._drop_column_if_exists("clip", "duration")
             self._drop_column_if_exists("video", "duration")
 
-        def enable_row_level_security(self):
-            with Session(self.database.engine) as session:
-                for model in SQLModel.__subclasses__():
-                    if hasattr(model, "__table__") and issubclass(model, OrgBoundModel):
-                        print(f"Enabling RLS for {model.__tablename__}")
-                        table_name = cast(str, model.__tablename__)  # type: ignore
-
-                        # Check if RLS is already enabled
-                        rls_enabled = session.execute(
-                            text(f"""
-                            SELECT relrowsecurity 
-                            FROM pg_class 
-                            WHERE relname = '{table_name}'
-                        """)
-                        ).scalar()
-
-                        if not rls_enabled:
-                            session.execute(
-                                text(
-                                    f"ALTER TABLE {table_name} ENABLE ROW LEVEL SECURITY"
-                                )
-                            )
-                            print(f"Enabled RLS for table {table_name}")
-
-                        # Check if policy already exists
-                        policy_exists = session.execute(
-                            text(f"""
-                            SELECT 1 
-                            FROM pg_policy 
-                            WHERE polrelid = '{table_name}'::regclass
-                        """)
-                        ).scalar()
-
-                        if not policy_exists:
-                            if model == Video:
-                                session.execute(
-                                    text(f"""
-                                    CREATE POLICY {table_name}_policy ON {table_name}
-                                    USING (
-                                        (company_id = current_setting('app.current_company_id')::uuid
-                                        AND (
-                                            current_setting('app.current_permission_level') = 'admin'
-                                            OR (current_setting('app.current_permission_level') IN ('write', 'admin'))
-                                            OR (current_setting('app.current_permission_level') = 'read' AND visibility != 'private')
-                                            OR (created_by_id = current_setting('app.current_employee_id')::uuid)
-                                        ))
-                                        OR visibility = 'public'
-                                    )
-                                """)
-                                )
-                            else:
-                                session.execute(
-                                    text(f"""
-                                    CREATE POLICY {table_name}_policy ON {table_name}
-                                    USING (
-                                        company_id = current_setting('app.current_company_id')::uuid
-                                        AND (
-                                            current_setting('app.current_permission_level') IN ('read', 'write', 'admin')
-                                        )
-                                    )
-                                """)
-                                )
-                            print(f"Created RLS policy for table {table_name}")
-                        else:
-                            print(f"RLS policy already exists for table {table_name}")
-
-                session.commit()
-                print("Row-level security enabled.")
-
         def _migrate_table(
             self, table_name: str, new_columns: List[Tuple[str, str]]
         ) -> None:
@@ -1024,13 +991,20 @@ class SqlModelDatabase(AbstractDatabase["SqlModelDatabase"]):
         self.employee = employee
         return self
 
+    @public
+    def get_employee(
+        self, session: Session, employee_id: Union[str, UUID]
+    ) -> Optional[Employee]:
+        return session.exec(select(Employee).where(Employee.id == employee_id)).first()
+
     def permissions_set_session_variables(self, session: Session, employee: Employee):
         """Same as set_session_variables, but without any kind of permissions. Use at your own risk."""
         session.execute(text(f"SET app.current_company_id = '{employee.company_id}'"))
         session.execute(
-            text(f"SET app.current_permission_level = '{employee.permission_level}'")
+            text(f"SET app.current_permission_level = '{employee.permission_level.name}'")
         )
-        session.flush()
+        session.execute(text(f"SET app.current_employee_id = '{employee.id}'"))
+        session.commit()
 
     @public
     def set_session_variables(self, session: Session, employee: Employee):
@@ -1038,17 +1012,19 @@ class SqlModelDatabase(AbstractDatabase["SqlModelDatabase"]):
         session.execute(
             text(f"SET app.current_permission_level = '{employee.permission_level}'")
         )
-        session.flush()
+        session.commit()
 
     @public
     def clear_session_variables(self, session: Session):
         session.execute(text("RESET app.current_company_id"))
         session.execute(text("RESET app.current_permission_level"))
+        session.execute(text("RESET app.current_employee_id"))
         session.commit()
 
     def permissions_clear_session_variables(self, session: Session):
         session.execute(text("RESET app.current_company_id"))
         session.execute(text("RESET app.current_permission_level"))
+        session.execute(text("RESET app.current_employee_id"))
         session.commit()
 
     def get_session_for_employee(self, public: bool = False) -> Session:
@@ -1062,15 +1038,17 @@ class SqlModelDatabase(AbstractDatabase["SqlModelDatabase"]):
     def authenticate_employee(
         self, session: Session, email: str, password: str
     ) -> Optional[Employee]:
-        with Session(self.engine) as session:
-            employee = session.exec(
-                select(Employee).where(Employee.email == email)
-            ).first()
+        employee = session.exec(select(Employee).where(Employee.email == email)).first()
 
-            if employee and pbkdf2_sha256.verify(
-                password, employee.hashed_password.decode("utf-8")
-            ):
+        if employee:
+            print(employee.hashed_password.decode("utf-8"))
+            if pbkdf2_sha256.verify(password, employee.hashed_password.decode("utf-8")):
+                print("Password verified successfully")
                 return employee
+            else:
+                print("Password verification failed")
+        else:
+            print("No employee found with this email")
 
         return None
 
@@ -1126,6 +1104,14 @@ class SqlModelDatabase(AbstractDatabase["SqlModelDatabase"]):
         unvalidated_company: UnvalidatedCompany,
         unvalidated_employee: CreateEmployee,
     ) -> Tuple[Company, Employee]:
+        # check if employee exists
+        existing_employee = session.exec(
+            select(Employee).where(Employee.email == unvalidated_employee.email)
+        ).first()
+        if existing_employee:
+            raise ValueError(
+                f"Employee with email {unvalidated_employee.email} already exists"
+            )
         company = Company.model_validate(unvalidated_company)
         session.add(company)
         session.commit()
@@ -1177,12 +1163,11 @@ class SqlModelDatabase(AbstractDatabase["SqlModelDatabase"]):
 
     @write
     def delete_user(self, session: Session, user_id: UUID) -> None:
-        with Session(self.engine) as session:
-            user = session.exec(select(User).where(User.id == user_id)).first()
-            if user is None:
-                raise ValueError(f"User with id {user_id} not found")
-            session.delete(user)
-            session.commit()
+        user = session.exec(select(User).where(User.id == user_id)).first()
+        if user is None:
+            raise ValueError(f"User with id {user_id} not found")
+        session.delete(user)
+        session.commit()
 
     @write
     def update_user(
@@ -1412,6 +1397,18 @@ class SqlModelDatabase(AbstractDatabase["SqlModelDatabase"]):
 
     @read
     def get_all_users(self, session: Session) -> Sequence[User]:
+        company_id = session.execute(
+            text("SELECT current_setting('app.current_company_id')")
+        ).scalar()
+        print(f"Current company_id: {company_id}")
+        permission_level = session.execute(
+            text("SELECT current_setting('app.current_permission_level')::permissionlevel")
+        ).scalar()
+        print(f"Current permission_level: {permission_level}")
+        employee_id = session.execute(
+            text("SELECT current_setting('app.current_employee_id')")
+        ).scalar()
+        print(f"Current employee_id: {employee_id}")
         return session.exec(select(User)).all()
 
     @write

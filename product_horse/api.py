@@ -277,6 +277,7 @@ async def extract_data_given_users(
 def get_user_names_and_transcript_counts(
     db: AbstractDatabase[DBType],
 ) -> Sequence[tuple[str, str]]:
+    """Only relevant for gradio"""
     users = db.get_all_users()
     user_ids = [user.id for user in users]
     if len(user_ids) == 0:

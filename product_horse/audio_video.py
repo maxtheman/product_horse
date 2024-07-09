@@ -34,7 +34,7 @@ from product_horse.db import (
     FileMetadata,
     VideoType,
     User,
-    Transcription,
+    UnvalidatedUtterance,
     Employee,
     CreateClip,
     AbstractDatabase,
