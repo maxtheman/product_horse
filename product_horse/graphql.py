@@ -2,21 +2,20 @@
 
 # %% auto 0
 __all__ = ['secret', 'database_url', 'database', 'database_superuser', 'T', 'PermissionsLevel', 'RegisterResponse',
-           'LoginResponse', 'schema', 'graphql_app', 'app', 'create_jwt', 'get_employee_id_from_jwt', 'Context',
+           'LoginResponse', 'schema', 'graphql_app', 'app', 'JwtPayload', 'create_jwt', 'decode_jwt', 'Context',
            'IsAuthenticated', 'FormError', 'FormErrors', 'handle_form_validation_errors', 'Employee', 'User', 'Word',
            'UtteranceSegment', 'Utterance', 'Clip', 'Video', 'Company', 'RegisterCompanySuccess', 'LoginSuccess',
            'Query', 'Mutation', 'get_context']
 
 # %% ../nbs/09_graphql.ipynb 3
-from typing import Annotated, Any, Union, cast, Sequence, Callable, TypeVar
+from typing import Annotated, Any, Union, cast, Sequence, Callable, TypeVar, TypedDict
 from functools import wraps
 
 from uuid import UUID
 import strawberry
 import jwt
 from jwt.exceptions import InvalidTokenError
-from fastapi import FastAPI, Request
-from sqlalchemy import text
+from fastapi import FastAPI
 from product_horse.db import (
     SqlModelDatabase,
     Employee,
@@ -29,7 +28,7 @@ from product_horse.db import (
     Utterance,
     UtteranceSegment,
     Word,
-    Clip
+    Clip,
 )
 from datetime import datetime, timedelta
 
@@ -53,23 +52,43 @@ if database_url is None:
     raise ValueError("DATABASE_URL is not set")
 if secret is None:
     raise ValueError("SECRET is not set")
-database = SqlModelDatabase(database_url="postgresql://rls_user:secure_password@localhost:5432/product_horse")
-database_superuser = SqlModelDatabase(database_url="postgresql://localhost:5432/product_horse")
+database = SqlModelDatabase(
+    database_url="postgresql://rls_user:secure_password@localhost:5432/product_horse"
+)
+database_superuser = SqlModelDatabase(
+    database_url="postgresql://localhost:5432/product_horse"
+)
 
 
-def create_jwt(employee_id: UUID) -> str:
+class JwtPayload(TypedDict):
+    id: UUID
+    company_id: UUID
+    exp: float
+    permission_level: DbPermissionLevel
+
+
+def create_jwt(
+    employee_id: UUID, company_id: UUID, permission_level: DbPermissionLevel
+) -> str:
     expiration = datetime.utcnow() + timedelta(weeks=2)
-    payload = {"employee_id": str(employee_id), "exp": expiration}
-    return jwt.encode(payload, secret, algorithm="HS256")
+    payload = {
+        "id": str(employee_id),
+        "company_id": str(company_id),
+        "exp": expiration,
+        "permission_level": permission_level.value,
+    }
+    return jwt.encode(payload, secret, algorithm="HS256")  # type: ignore
 
 
-def get_employee_id_from_jwt(token: str) -> str:
-    payload = jwt.decode(token, secret, algorithms=["HS256"])
-    if "employee_id" not in payload:
+def decode_jwt(token: str) -> JwtPayload:
+    payload = cast(JwtPayload, jwt.decode(token, secret, algorithms=["HS256"]))  # type: ignore
+    if "id" not in payload:
+        raise InvalidTokenError
+    if "company_id" not in payload:
         raise InvalidTokenError
     if datetime.fromtimestamp(payload["exp"]) < datetime.utcnow():
         raise InvalidTokenError
-    return payload["employee_id"]
+    return payload
 
 
 class Context(BaseContext):
@@ -85,7 +104,8 @@ class Context(BaseContext):
         if not authorization.startswith("Bearer "):
             return None
         token = authorization.split()[1]
-        employee_id = get_employee_id_from_jwt(token)
+        payload = decode_jwt(token)
+        employee_id = payload["id"]
         # run on superuser connection, since it's behind jwt auth
         employee = database_superuser.get_employee(employee_id=employee_id)
         return employee
@@ -95,7 +115,7 @@ class IsAuthenticated(BasePermission):
     message = "Employee is not authenticated"
     error_extensions = {"code": "UNAUTHORIZED"}
 
-    def has_permission(self, source: Any, info: strawberry.Info, **kwargs) -> bool:
+    def has_permission(self, source: Any, info: strawberry.Info, **kwargs: Any) -> bool:
         employee = info.context.employee
         return employee is not None
 
@@ -118,7 +138,7 @@ def handle_form_validation_errors(
     func: Callable[..., T],
 ) -> Callable[..., Union[T, FormErrors]]:
     @wraps(func)
-    def wrapper(*args, **kwargs) -> Union[T, FormErrors]:
+    def wrapper(*args: Any, **kwargs: Any) -> Union[T, FormErrors]:
         try:
             return func(*args, **kwargs)
         except ValidationError as e:
@@ -147,12 +167,14 @@ class User:
     id: UUID
     name: str
 
+
 @strawberry.experimental.pydantic.type(Word)
 class Word:
     id: UUID
     text: str
     start_time: float
     end_time: float
+
 
 @strawberry.experimental.pydantic.type(UtteranceSegment)
 class UtteranceSegment:
@@ -161,6 +183,7 @@ class UtteranceSegment:
     end_word: Word
     text: str
     words: list[Word]
+
 
 @strawberry.experimental.pydantic.type(Utterance)
 class Utterance:
@@ -172,17 +195,20 @@ class Utterance:
     text: str
     words: list[Word]
 
+
 @strawberry.experimental.pydantic.type(Clip)
 class Clip:
     id: UUID
     name: str
     words: list[Word]
 
+
 @strawberry.experimental.pydantic.type(Video)
 class Video:
     id: UUID
     name: str
     clips: list[Clip]
+
 
 @strawberry.experimental.pydantic.type(Company)
 class Company:
@@ -215,13 +241,13 @@ LoginResponse = Annotated[
     strawberry.union("LoginResponse"),
 ]
 
+
 @strawberry.type
 class Query:
     employee: Employee
 
     @strawberry.field(permission_classes=[IsAuthenticated])
     def get_users(self, info: strawberry.Info) -> Sequence[User]:
-        print('get_users')
         return database.as_employee(info.context.employee).get_all_users()
 
     # @strawberry.field(permission_classes=[IsAuthenticated])
@@ -233,7 +259,7 @@ class Query:
     # @strawberry.field(permission_classes=[IsAuthenticated])
     # def get_video(self, info: strawberry.Info, video_id: str) -> Video:
     #     raise NotImplementedError
-    
+
     # @strawberry.field(permission_classes=[IsAuthenticated])
     # def get_videos(self, info: strawberry.Info) -> Sequence[Video]:
     #     raise NotImplementedError
@@ -244,10 +270,15 @@ class Mutation:
     @strawberry.mutation
     def login(self, email: str, password: str) -> LoginResponse:
         print(password)
-        employee = database.authenticate_employee(email, password)
+        employee = database_superuser.authenticate_employee(email, password)
         if employee is None:
             raise Exception("Invalid email or password")
-        return LoginSuccess(employee=employee, token=create_jwt(employee.id))
+        return LoginSuccess(
+            employee=employee,
+            token=create_jwt(
+                employee.id, employee.company_id, employee.permission_level
+            ),
+        )
 
     @strawberry.mutation
     @handle_form_validation_errors
@@ -261,11 +292,13 @@ class Mutation:
             password=password,
             permission_level=DbPermissionLevel.ADMIN,
         )
-        company, employee = database.save_company_and_employee(
+        company, employee = database_superuser.save_company_and_employee(
             company_to_save, employee_to_save
         )
-        # print(company, employee)
-        return RegisterCompanySuccess(company=company, token=create_jwt(employee.id))
+        return RegisterCompanySuccess(
+            company=company,
+            token=create_jwt(employee.id, company.id, employee.permission_level),
+        )
 
     # @strawberry.mutation
     # def save_files_and_transcriptions(

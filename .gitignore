@@ -23,3 +23,9 @@ chroma_db/chroma.sqlite3
 
 target/*
 target
+
+node_modules/
+
+*.sqlite
+
+.wrangler

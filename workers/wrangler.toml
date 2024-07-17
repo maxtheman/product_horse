@@ -1,0 +1,16 @@
+name = "product_horse_r2_api"
+main = "src/api_entry.py"
+compatibility_flags = ["python_workers"]
+compatibility_date = "2024-03-20"
+
+[[r2_buckets]]
+binding = 'BUCKET' # <~ valid JavaScript variable name
+bucket_name = '<YOUR_BUCKET_NAME>'
+
+[[d1_databases]]
+binding = "DB" # This will be how you refer to your database in your Worker
+database_name = "YOUR_DATABASE_NAME"
+database_id = "YOUR_DATABASE_ID"
+
+[vars]
+SECRET = "secrasdfadsfasdfafsdasdfet" #must be same as app secret

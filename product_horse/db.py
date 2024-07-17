@@ -1397,18 +1397,6 @@ class SqlModelDatabase(AbstractDatabase["SqlModelDatabase"]):
 
     @read
     def get_all_users(self, session: Session) -> Sequence[User]:
-        company_id = session.execute(
-            text("SELECT current_setting('app.current_company_id')")
-        ).scalar()
-        print(f"Current company_id: {company_id}")
-        permission_level = session.execute(
-            text("SELECT current_setting('app.current_permission_level')::permissionlevel")
-        ).scalar()
-        print(f"Current permission_level: {permission_level}")
-        employee_id = session.execute(
-            text("SELECT current_setting('app.current_employee_id')")
-        ).scalar()
-        print(f"Current employee_id: {employee_id}")
         return session.exec(select(User)).all()
 
     @write

@@ -57,6 +57,10 @@ export = 'nbdev_export'
 graphql = 'strawberry server product_horse.graphql'
 dev = 'rye run fastapi dev product_horse/graphql.py'
 rls-local = '''psql -d product_horse -c "SET app.rls_user_password = '$RLS_USER_PASSWORD';" -f enable_rls.sql'''
+workers = 'npx wrangler dev'
+setup_d1_local = 'npx wrangler d1 execute YOUR_DATABASE_NAME --file=/Users/max/Documents/product_horse/sql_files/setup_d1.sql'
+setup_d1_remote = 'npx wrangler d1 execute YOUR_DATABASE_NAME --file=/Users/max/Documents/product_horse/sql_files/setup_d1.sql --remote'
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
