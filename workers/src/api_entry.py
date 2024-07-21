@@ -1,19 +1,17 @@
 # type: ignore
-from js import Response, Headers, console, ReadableStream, Object
+from js import Response, console, ReadableStream, Object
 from base64 import b64encode
 from jwt import decode_jwt
-import uuid
+from dataclasses import fields
 from cf_types import (
     Method,
     Env,
     WorkerRequestType,
     JwtPayload,
     D1Database,
-    File,
     R2ListOptions,
     FileCreate,
     FileCreatePart,
-    FileCreateStart,
     FileId,
     R2Object,
     R2ObjectBody,
@@ -21,26 +19,59 @@ from cf_types import (
     Employee,
     R2UploadedPart,
     Visibility,
-    R2MultipartUpload
+    R2MultipartUpload,
+    FileAccess,
 )
 from db_ops import (
     check_and_insert_employee,
     insert_file_access,
     check_file_access,
     remove_file_access,
+    check_multiple_file_access,
 )
-from typing import Optional, List, Any
+from typing import Optional, Any
 from datetime import datetime
 from dataclasses import field, dataclass, asdict
 from pyodide.ffi import JsException, to_js as _to_js
 import json
 
+
 class DataSize:
     MB_100 = 100 * 1024 * 1024
     MB_1000 = 1000 * 1024 * 1024
 
+
 def to_js(obj):
-   return _to_js(obj, dict_converter=Object.fromEntries)
+    return _to_js(obj, dict_converter=Object.fromEntries)
+
+
+def r2object_converter(value, convert, cache):
+    if value.constructor.name == "HeadResult":
+        if all([value.customMetadata, value.httpEtag, value.httpMetadata]):
+            pass
+        else:
+            console.log("value", value)
+            raise ValueError("Invalid object")
+        if value.checksums.md5:
+            checksum = value.checksums.md5.to_bytes().hex()
+        else:
+            checksum = ""
+        r2_object = R2Object(
+            storageClass=value.storageClass,
+            key=value.key,
+            etag=value.etag,
+            size=value.size,
+            uploaded=value.uploaded.toGMTString(),
+            checksums={"md5": checksum},
+            httpEtag=value.httpEtag,
+            customMetadata=value.customMetadata.to_py(),
+            httpMetadata=value.httpMetadata.to_py(),
+            version=value.version,
+            range=value.range,
+        )
+        return r2_object
+    return value
+
 
 # CORE WORKER
 # can't connect with hyperdrive due to rls - hyperdrive doesn't support SET.
@@ -55,56 +86,25 @@ async def authenticate_employee(jwt, env: Env):
     employee = Employee(**employee_args)
     return employee
 
-def json_response(data):
-    data = json.dumps(data)
-    headers = Headers.new({"content-type": "application/json"}.items())
-    return Response.new(data, headers=headers)
-
-def direct_binary_response(data: bytes, content_type: str):
-    headers = Headers.new({
-        "Content-Type": content_type,
-        "Content-Length": str(len(data))
-    }.items())
-    return Response.new(data, headers=headers)
-
-def multipart_response(parts: List[tuple[bytes, str, str]]):
-    boundary = str(uuid.uuid4())
-    body = b""
-    for data, content_type, name in parts:
-        body += f"\r\n--{boundary}\r\n".encode()
-        body += f"Content-Disposition: form-data; name=\"{name}\"\r\n".encode()
-        body += f"Content-Type: {content_type}\r\n\r\n".encode()
-        body += data
-    body += f"\r\n--{boundary}--\r\n".encode()
-
-    headers = Headers.new({"Content-Type": f"multipart/form-data; boundary={boundary}"}.items())
-    return Response.new(body, headers=headers)
 
 async def stream_to_json(stream: ReadableStream) -> dict[str, Any]:
     body_chunks = []
     async for chunk in stream:
         body_chunks.append(chunk.to_py())
-    body_bytes = b''.join(body_chunks)
-    body_str = body_bytes.decode('utf-8')
+    body_bytes = b"".join(body_chunks)
+    body_str = body_bytes.decode("utf-8")
     return json.loads(body_str)
 
+
 async def base64_encode(data: bytes) -> str:
-    return b64encode(data).decode('utf-8')
+    return b64encode(data).decode("utf-8")
 
-
-async def create_employee(
-    employee: Employee,
-    db: D1Database,
-):
-    """Create an employee.
-    Returns whether the employee was created or not."""
-    employee_created = await check_and_insert_employee(db, employee)
-    return employee_created
 
 @dataclass
 class GetOptions:
     onlyIf: dict[str, Any]
     range: dict[str, Any]
+
 
 @dataclass
 class ListOptions:
@@ -123,34 +123,62 @@ class ListOptions:
         if value < 1 or value > 1000:
             raise ValueError("Limit must be between 1 and 1000")
         self._limit = value
+
+
 async def get_file(
     key: str | None,
     employee: Employee,
     bucket: R2Bucket,
+    d1: D1Database,
     options: GetOptions | R2ListOptions | None,
 ):
-    #TODO: check intended file visibility
+    # TODO: check intended file visibility
     if options is None:
         object: R2Object | R2ObjectBody = await bucket.get(key)
         return object
     decoded_options: dict[str, Any] = asdict(options)
-    if 'limit' in decoded_options or 'cursor' in decoded_options:
-        objects = await bucket.list(options=decoded_options)
-        return objects
+    if "limit" in decoded_options or "cursor" in decoded_options:
+        final_options_dict = {
+            "limit": decoded_options.get("limit", 100),
+            "cursor": decoded_options.get("cursor", None),
+        }
+        objects = await bucket.list(**final_options_dict)
+        objects = objects.to_py(default_converter=r2object_converter)
+        file_accesses = await check_multiple_file_access(
+            d1, [obj.key for obj in objects["objects"]], employee
+        )
+        filtered_dict = {'objects': []}
+        for item in objects['objects']:
+            item_dict = asdict(item)
+            name = item_dict['key']
+            if name in file_accesses:
+                result = next((asdict(item) for item in objects['objects'] if name <= item.key), None)
+                filtered_dict['objects'].append(result)
+        return to_js(filtered_dict)
     elif key is not None:
+        file_access = await check_file_access(d1, key, employee)
+        if not file_access:
+            raise PermissionError("File access denied")
         object: R2Object | R2ObjectBody = await bucket.get(key)
-    elif key is not None and ('range' in decoded_options or 'onlyIf' in decoded_options):
+    elif key is not None and (
+        "range" in decoded_options or "onlyIf" in decoded_options
+    ):
+        file_access = await check_file_access(d1, key, employee)
+        if not file_access:
+            raise PermissionError("File access denied")
         object: R2Object | R2ObjectBody = await bucket.get(key, options=decoded_options)
-    if 'body' not in object:
+    if "body" not in object:
         raise ValueError("Invalid object - options failed")
-    elif 'body' in object:
+    elif "body" in object:
         return object
     else:
         raise ValueError("Invalid object - options failed")
 
+
 def content_validator(content: str | bytes):
     if content is None or content == "" or len(content) < 2:
         raise ValueError("Content is required")
+
 
 @dataclass
 class FileCreateBody:
@@ -163,7 +191,7 @@ class FileCreateBody:
     @property
     def visibility(self):
         return self._visibility
-    
+
     @visibility.setter
     def visibility(self, value: Visibility):
         if value not in Visibility:
@@ -173,11 +201,12 @@ class FileCreateBody:
     @property
     def content(self):
         return self._content
-    
+
     @content.setter
     def content(self, value: str | bytes):
         content_validator(value)
         self._content = value
+
 
 @dataclass
 class FileCreatePartBody:
@@ -192,20 +221,20 @@ class FileCreatePartBody:
     @property
     def part(self):
         return self._part
-    
+
     @property
     def content(self):
         return self._content
-    
+
     @property
     def upload_id(self):
         return str(self._upload_id)
-    
+
     @content.setter
     def content(self, value: str | bytes):
         content_validator(value)
         self._content = value
-    
+
     @part.setter
     def part(self, value: int):
         if not isinstance(value, int):
@@ -213,7 +242,7 @@ class FileCreatePartBody:
         if value < 0 or value > 1000000:
             raise ValueError("Invalid part number")
         self._part = value
-    
+
     @upload_id.setter
     def upload_id(self, value: str):
         if not isinstance(value, str):
@@ -221,10 +250,12 @@ class FileCreatePartBody:
         else:
             self._upload_id = value
 
+
 def file_create_factory(file_body: dict[str, Any]):
     if "upload_id" in file_body:
         return FileCreatePartBody(**file_body)
     return FileCreateBody(**file_body)
+
 
 @dataclass
 class R2UploadedPartBody(R2UploadedPart):
@@ -239,7 +270,7 @@ class R2UploadedPartBody(R2UploadedPart):
     @property
     def partNumber(self):
         return self._part_number
-    
+
     @partNumber.setter
     def partNumber(self, value: int):
         if not isinstance(value, int):
@@ -248,14 +279,27 @@ class R2UploadedPartBody(R2UploadedPart):
             raise ValueError("Invalid part number")
         self._part_number = value
 
+
 async def upload_file(
     employee: Employee,
     file_body: FileCreate | FileCreatePart,
     bucket: R2Bucket,
+    d1: D1Database,
 ):
-    #TODO: store intended file visibility
+    # TODO: store intended file visibility
     file_request = file_create_factory(file_body)
     if isinstance(file_request, FileCreateBody):
+        file_access: bool = await insert_file_access(
+            d1,
+            FileAccess(
+                key=file_request.key,
+                employee_id=employee.id,
+                company_id=employee.company_id,
+                visibility=file_request.visibility,
+            ),
+        )
+        if not file_access:
+            raise ValueError("Failed to insert file access")
         returned_file = await bucket.put(file_request.key, file_request.content)
         return returned_file
     elif isinstance(file_request, FileCreatePartBody):
@@ -264,10 +308,13 @@ async def upload_file(
             file_request.key,
             file_request.upload_id,
         )
-        returned_file_part = await resumed_upload.uploadPart(file_request.part, file_request.content)
+        returned_file_part = await resumed_upload.uploadPart(
+            file_request.part, file_request.content
+        )
         return returned_file_part
     else:
         raise ValueError("Invalid request")
+
 
 @dataclass
 class FileCreateStartBody:
@@ -278,17 +325,19 @@ class FileCreateStartBody:
     @property
     def visibility(self):
         return self._visibility
-    
+
     @visibility.setter
     def visibility(self, value: Visibility):
         if value not in Visibility:
             raise ValueError("Invalid visibility")
         self._visibility = value
 
+
 @dataclass
 class R2MultipartUploadResponse(R2MultipartUpload):
     key: str
     version: str
+
 
 def file_create_start_factory(file_body: dict[str, Any] | list):
     match file_body:
@@ -297,12 +346,15 @@ def file_create_start_factory(file_body: dict[str, Any] | list):
         case list():
             return [R2UploadedPartBody(**part) for part in file_body]
 
+
 async def multi_part_upload(
     employee: Employee,
     multi_part_body_raw: dict[str, Any] | list[dict[str, Any]],
     bucket: R2Bucket,
+    d1: D1Database,
     upload_id: str | None = None,
     key_param: str | None = None,
+    key_visibility: Visibility | None = None,
 ):
     """Create or resolve multi-part upload"""
     multi_part_body = file_create_start_factory(multi_part_body_raw)
@@ -323,14 +375,20 @@ async def multi_part_upload(
                 upload_id,
             )
             js_body = to_js(multi_part_body_raw)
-            console.log(js_body)
-            final_file: R2Object = await object_to_upload_to.complete(
-                js_body
+            await insert_file_access(
+                d1,
+                file_access=FileAccess(
+                    key=key_param,
+                    employee_id=employee.id,
+                    company_id=employee.company_id,
+                    visibility=key_visibility,
+                ),
             )
-            print('final_file', final_file)
+            final_file: R2Object = await object_to_upload_to.complete(js_body)
             return final_file
         case _:
-            return Response.json({"error": "Invalid request"}, status=400)
+            js_error = json.dumps({"error": "Invalid request"})
+            return Response.json(js_error, status=400)
 
 
 async def delete(
@@ -344,7 +402,8 @@ async def delete(
 async def on_fetch(request: WorkerRequestType, env: Env):
     if "X-API-Key" not in request.headers:
         print("No X-API-Key")
-        return Response.json({"error": "Unauthorized"}, status=401)
+        js_error = json.dumps({"error": "Unauthorized"})
+        return Response.json(js_error, status=401)
     method = Method(request.method)
     url_path = request.url.split("/")[-1]
     params = {}
@@ -353,10 +412,12 @@ async def on_fetch(request: WorkerRequestType, env: Env):
         if "?" in url_path:
             param_string = url_path.split("?")[-1]
             url_path = url_path.split("?")[0]
-        if '&' in param_string:
+        if "&" in param_string:
             param_strings = param_string.split("&")
-            params = {param.split("=")[0]: param.split("=")[1] for param in param_strings}
-        elif '=' in param_string:
+            params = {
+                param.split("=")[0]: param.split("=")[1] for param in param_strings
+            }
+        elif "=" in param_string:
             params = {param_string.split("=")[0]: param_string.split("=")[1]}
     except ValueError:
         params = {}
@@ -364,12 +425,25 @@ async def on_fetch(request: WorkerRequestType, env: Env):
         employee = await authenticate_employee(request.headers["X-API-Key"], env)
     except (AssertionError, ValueError) as e:
         print(f"Unauthorized: {e}")
-        return Response.json({"error": "Unauthorized"}, status=401)
+        js_error = json.dumps({"error": "Unauthorized"})
+        return Response.json(js_error, status=401)
     except Exception as e:
         print(f"Error: {e}")
-        return Response.json({"error": "Internal server error"}, status=500)
-    if url_path not in ["files", "employees"]:
-        return Response.json({"error": "Not found"}, status=404)
+        js_error = json.dumps({"error": "Internal server error"})
+        return Response.json(js_error, status=500)
+    try:
+        employee_registered = await check_and_insert_employee(env.DB, employee)
+        if not employee_registered:
+            return Response.json(
+                {"error": "Employee registration failed, check jwt"}, status=400
+            )
+    except ValueError as e:
+        print(f"Error: {e}")
+        js_error = json.dumps({"error": str(e)})
+        return Response.json(js_error, status=4000)
+    if url_path not in ["files"]:
+        js_error = json.dumps({"error": "Not found"})
+        return Response.json(js_error, status=404)
     match method:
         case Method.GET:
             limit = params.get("limit", None)
@@ -380,7 +454,8 @@ async def on_fetch(request: WorkerRequestType, env: Env):
             onlyIf = params.get("onlyIf", None)
             get_key = params.get("key", None)
             if get_key is None and cursor is None and range is None and limit is None:
-                return Response.json({"error": "Invalid request"}, status=400)
+                js_error = json.dumps({"error": "Invalid request"})
+                return Response.json(js_error, status=400)
             if limit is not None or cursor is not None:
                 options = ListOptions(limit=limit, cursor=cursor)
             elif range is not None or onlyIf is not None:
@@ -388,39 +463,50 @@ async def on_fetch(request: WorkerRequestType, env: Env):
             else:
                 options = None
             try:
-                file = await get_file(
-                    get_key, employee, env.BUCKET, options
-                )
+                file = await get_file(get_key, employee, env.BUCKET, env.DB, options)
             except ValueError as e:
                 print(f"Error: {e}")
-                return Response.json({"error": str(e)}, status=400)
+                js_error = json.dumps({"error": str(e)})
+                return Response.json(js_error, status=400)
+            except PermissionError as e:
+                print(f"Error: {e}")
+                js_error = json.dumps({"error": str(e)})
+                return Response.json(js_error, status=403)
             return Response.json(file)
         case Method.POST:
             try:
                 multi_part_body = await stream_to_json(request.body)
                 upload_id = params.get("upload_id", None)
                 key_param = params.get("key", None)
+                key_visibility = params.get("visibility", None)
                 file = await multi_part_upload(
                     employee,
                     multi_part_body_raw=multi_part_body,
                     bucket=env.BUCKET,
+                    d1=env.DB,
                     upload_id=upload_id,
                     key_param=key_param,
+                    key_visibility=key_visibility,
                 )
             except ValueError as e:
                 print(f"Error: {e}")
-                return Response.json({"error": str(e)}, status=400)
+                js_error = json.dumps({"error": str(e)})
+                return Response.json(js_error, status=400)
             return Response.json(file)
         case Method.PUT:
             try:
                 file_body = await stream_to_json(request.body)
-                file = await upload_file(employee, file_body=file_body, bucket=env.BUCKET)
+                file = await upload_file(
+                    employee, file_body=file_body, bucket=env.BUCKET, d1=env.DB
+                )
             except (ValueError, TypeError, JsException) as e:
                 print(f"Error: {e}")
-                return Response.json({"error": str(e)}, status=400)
+                js_error = json.dumps({"error": str(e)})
+                return Response.json(js_error, status=400)
             return Response.json(file)
         case Method.DELETE:
             file = await delete(request.body, employee, env.BUCKET)
             return Response.json(file)
         case _:
-            return Response.json({"error": "Method not allowed"}, status=405)
+            js_error = json.dumps({"error": "Method not allowed"})
+            return Response.json(js_error, status=405)

@@ -9,7 +9,6 @@ from typing import (
     TypeVar,
     Generic,
     TypedDict,
-    runtime_checkable,
 )
 from dataclasses import dataclass, field
 from enum import IntEnum, Enum
@@ -26,8 +25,9 @@ class File(FileId):
     key: str
     name: str
 
-
-class FileAccess(File):
+@dataclass
+class FileAccess:
+    key: str
     visibility: "Visibility"
     employee_id: str
     company_id: str
@@ -372,9 +372,15 @@ class D1ResultMetrics(Generic[T]):
 class D1Result(Generic[T]):
     pass
 
+    def __getitem__(self, item: str) -> Any: ...
+
 
 class D1Results(Generic[T]):
-    result: List[T]
+    success: bool
+    meta: Dict[str, int]
+    results: List[D1Result[T]]
+
+    def __getitem__(self, key: str) -> D1Result[T]: ...
 
 
 class D1ExecResult:

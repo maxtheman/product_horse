@@ -1,5 +1,4 @@
 import unittest
-from dataclasses import dataclass
 import requests
 from dotenv import load_dotenv
 import base64
@@ -9,6 +8,7 @@ import hashlib
 from datetime import datetime, timedelta
 from typing import Dict, Any
 import os
+from uuid import uuid4
 
 load_dotenv()
 
@@ -28,12 +28,6 @@ def encode_jwt(payload: Dict[str, Any], secret: str) -> str:
     return f"{header_b64}.{payload_b64}.{signature_b64}"
 
 
-@dataclass
-class UploadState:
-    upload_id: str
-    part: int
-
-
 class TestAPI(unittest.TestCase):
     BASE_URL = "http://localhost:8787"
     HEADERS = {
@@ -48,48 +42,47 @@ class TestAPI(unittest.TestCase):
         )
     }
 
-    def setUp(self):
-        self.upload_state = UploadState(upload_id="", part=1)
-
     def test_put_file(self):
-        data = {"key": "test", "visibility": "PUBLIC", "content": "example content"}
+        key_to_test = str(uuid4())
+        data = {"key": key_to_test, "visibility": "PUBLIC", "content": "example content"}
         response = requests.put(
             f"{self.BASE_URL}/files", headers=self.HEADERS, json=data
         )
-        # print('put',response.json())
         self.assertEqual(response.status_code, 200)
         self.assertIn("size", response.json())
 
     def test_get_file(self):
         # get without options
+        HARDCODED_KEY = "test"
         response = requests.get(
-            f"{self.BASE_URL}/files", headers=self.HEADERS, params={"key": "test"}
+            f"{self.BASE_URL}/files", headers=self.HEADERS, params={"key": HARDCODED_KEY}
         )
         self.assertEqual(response.status_code, 200)
         self.assertIn("key", response.json())
 
     def test_get_file_with_options(self):
+        """Check that the limit works"""
         response = requests.get(
-            f"{self.BASE_URL}/files", headers=self.HEADERS, params={"limit": 1}
+            f"{self.BASE_URL}/files", headers=self.HEADERS, params={"limit": 2}
         )
         self.assertEqual(response.status_code, 200)
         self.assertIsInstance(response.json()["objects"], list)
-        self.assertEqual(len(response.json()["objects"]), 1)
+        self.assertEqual(len(response.json()["objects"]), 2)
 
     def test_multi_part_upload_e2e(self):
-        data = {"key": "test", "visibility": "PUBLIC"}
+        key_to_test = str(uuid4())
+        data = {"key": key_to_test, "visibility": "PUBLIC"}
         response = requests.post(
             f"{self.BASE_URL}/files", headers=self.HEADERS, json=data
         )
         multi_part_upload_response = response.json()
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, f"Response status code should be 200, got {multi_part_upload_response}")
         self.assertIn("key", multi_part_upload_response)
         self.assertIn("uploadId", multi_part_upload_response)
         upload_id = multi_part_upload_response["uploadId"]
 
-        print("send a file part")
         data = {
-            "key": "test",
+            "key": key_to_test,
             "upload_id": upload_id,
             "part": 1,
             "content": "example content",
@@ -101,14 +94,14 @@ class TestAPI(unittest.TestCase):
         self.assertIn("etag", multi_part_file_data.json())
         self.assertIn("partNumber", multi_part_file_data.json())
 
-        response = requests.post(
+        final_response = requests.post(
             f"{self.BASE_URL}/files",
             headers=self.HEADERS,
             json=[multi_part_file_data.json()],
-            params={"upload_id": upload_id, 'key': 'test'},
+            params={"upload_id": upload_id, 'key': key_to_test, 'visibility': 'PUBLIC'},
         )
-        self.assertEqual(response.status_code, 200)
-        self.assertIn("etag", response.json())
+        self.assertEqual(final_response.status_code, 200, f"Response status code should be 200, got {final_response.json()}")
+        self.assertIn("etag", final_response.json(), "etag should be in the response")
 
 
 if __name__ == "__main__":

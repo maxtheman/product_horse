@@ -9,7 +9,7 @@ CREATE TABLE employees (
 CREATE TABLE files (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
-    visibility INTEGER NOT NULL,
+    visibility TEXT NOT NULL,
     employee_id TEXT NOT NULL,
     company_id TEXT NOT NULL,
     FOREIGN KEY (employee_id) REFERENCES employees(id)
