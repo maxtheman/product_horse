@@ -46,6 +46,8 @@ dependencies = [
     "passlib>=1.7.4",
     "fastapi>=0.111.0",
     "pyjwt>=2.8.0",
+    "openapi-python-client>=0.21.2",
+    "certifi>=2024.7.4",
 ]
 readme = "README.md"
 requires-python = ">= 3.11"
@@ -58,8 +60,10 @@ graphql = 'strawberry server product_horse.graphql'
 dev = 'rye run fastapi dev product_horse/graphql.py'
 rls-local = '''psql -d product_horse -c "SET app.rls_user_password = '$RLS_USER_PASSWORD';" -f enable_rls.sql'''
 workers = 'npx wrangler dev'
-setup_d1_local = 'npx wrangler d1 execute YOUR_DATABASE_NAME --file=/Users/max/Documents/product_horse/sql_files/setup_d1.sql'
-setup_d1_remote = 'npx wrangler d1 execute YOUR_DATABASE_NAME --file=/Users/max/Documents/product_horse/sql_files/setup_d1.sql --remote'
+setup_d1_local = 'npx wrangler d1 execute ph-storage-db --file=/Users/max/Documents/product_horse/sql_files/setup_d1.sql'
+setup_d1_remote = 'npx wrangler d1 execute ph-storage-db --file=/Users/max/Documents/product_horse/sql_files/setup_d1.sql --remote'
+build_storage_client = 'rye run openapi-python-client generate --path /Users/max/Documents/product_horse/workers/openapi.yaml --output-path /Users/max/Documents/product_horse/storage_client --overwrite'
+deploy_worker='npx wrangler deploy'
 
 [build-system]
 requires = ["hatchling"]

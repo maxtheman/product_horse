@@ -1,16 +1,18 @@
-name = "product_horse_r2_api"
+name = "storage"
 main = "src/api_entry.py"
 compatibility_flags = ["python_workers"]
 compatibility_date = "2024-03-20"
+account_id="db59eb944db359472048f5e9a5dbc7d7"
+workers_dev = true
 
 [[r2_buckets]]
-binding = 'BUCKET' # <~ valid JavaScript variable name
-bucket_name = '<YOUR_BUCKET_NAME>'
+binding = 'BUCKET'
+bucket_name = 'ph-storage'
 
 [[d1_databases]]
 binding = "DB" # This will be how you refer to your database in your Worker
-database_name = "YOUR_DATABASE_NAME"
-database_id = "YOUR_DATABASE_ID"
+database_name = "ph-storage-db"
+database_id = "e6ba068e-e5ac-49c8-8141-ff17ba6c4f55"
 
 [vars]
 SECRET = "secrasdfadsfasdfafsdasdfet" #must be same as app secret

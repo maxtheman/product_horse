@@ -22,7 +22,7 @@ def decode_jwt(token: str, secret: str):
         else:
             raise ValueError("Invalid signature")
     except Exception as e:
-        raise ValueError(f"Invalid signature, {e}")
+        raise ValueError(f"Decoding JWT: {e}")
 
 
 def encode_jwt(payload: Dict[str, Any], secret: str) -> str:
