@@ -33,6 +33,7 @@ from enum import Enum
 from datetime import datetime
 from dataclasses import field, dataclass, asdict
 from pyodide.ffi import JsException, to_js as _to_js, JsProxy
+from urllib.parse import unquote
 import json
 
 
@@ -387,7 +388,7 @@ def file_create_start_factory(file_body: dict[str, Any] | list):
             return [R2UploadedPartBody(**part) for part in file_body]
 
 
-async def multi_part_upload(
+async def make_multi_part_upload(
     employee: Employee,
     multi_part_body_raw: dict[str, Any] | list[dict[str, Any]],
     bucket: R2Bucket,
@@ -410,12 +411,13 @@ async def multi_part_upload(
                 raise ValueError("Upload ID is required")
             if key_param is None:
                 raise ValueError("Key is required")
+            key_param_json = unquote(key_param)
             object_to_upload_to = bucket.resumeMultipartUpload(
-                key_param,
+                key_param_json,
                 upload_id,
             )
             js_body = to_js(multi_part_body_raw)
-            await insert_file_access(
+            access = await insert_file_access(
                 d1,
                 file_access=FileAccess(
                     key=key_param,
@@ -424,11 +426,12 @@ async def multi_part_upload(
                     visibility=key_visibility,
                 ),
             )
+            if not access:
+                raise ValueError("Failed to insert file access")
             final_file: R2Object = await object_to_upload_to.complete(js_body)
             return final_file
         case _:
-            js_error = json.dumps({"error": "Invalid request"})
-            return Response.json(js_error, status=400)
+            raise ValueError("Invalid request")
 
 
 async def delete(
@@ -539,7 +542,7 @@ async def on_fetch(request: WorkerRequestType, env: Env):
                 upload_id = params.get("upload_id", None)
                 key_param = params.get("key", None)
                 key_visibility = params.get("visibility", None)
-                file = await multi_part_upload(
+                file = await make_multi_part_upload(
                     employee,
                     multi_part_body_raw=multi_part_body,
                     bucket=env.BUCKET,
@@ -548,7 +551,7 @@ async def on_fetch(request: WorkerRequestType, env: Env):
                     key_param=key_param,
                     key_visibility=key_visibility,
                 )
-            except ValueError as e:
+            except (ValueError, JsException) as e:
                 print(f"Error: {e}")
                 js_error = json.dumps({"error": str(e)})
                 return Response.json(js_error, status=400)

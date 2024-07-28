@@ -71,19 +71,18 @@ async def chunk_reader(
         yield chunk
 
 
-TEST_LOCAL_FILE = (
-    # "/Users/max/Documents/product_horse/static_files/temp-videos/How_do_you_think_about_what_the_Value_of_Pave_is_t.mp4"
-    "/Users/max/Documents/product_horse/static_files/temp-videos/test-viz.mp4"
-)
+TEST_BIG_FILE = "/Users/max/Documents/product_horse/static_files/temp-videos/How_do_you_think_about_what_the_Value_of_Pave_is_t.mp4"
+
+TEST_LOCAL_FILE = "/Users/max/Documents/product_horse/static_files/temp-videos/test-viz.mp4"
 
 client = AuthenticatedClient(
-    # base_url="https://storage.producthorse.workers.dev/",
-    base_url="http://localhost:8787",
+    base_url="https://storage.producthorse.workers.dev/",
+    # base_url="http://localhost:8787",
     token=JWT,
     # verify_ssl=False,
 )
-
 file_object = open(TEST_LOCAL_FILE, "rb")
+big_file_object = open(TEST_BIG_FILE, "rb")
 body = PutFilesBody(
     key=test_key,
     file=File(
@@ -138,54 +137,57 @@ end_multi_part_upload = post_files.sync_detailed(
 )
 
 ### big file test ###
-# big_file_start = post_files.sync(
-#     client=client,
-#     body=FileCreateStartBody(key=test_key_2, visibility=Visibility.PRIVATE),
-# )
+test_key_3 = str(uuid4())
+big_file_start = post_files.sync(
+    client=client,
+    body=FileCreateStartBody(key=test_key_3, visibility=Visibility.PRIVATE),
+)
 
-# if not isinstance(big_file_start, R2MultipartUploadResponse):
-#     raise Exception("No upload id returned")
+if not isinstance(big_file_start, R2MultipartUploadResponse):
+    raise Exception("No upload id returned")
 
 
-# async def upload_big_file():
-#     async def upload_chunk(chunk: bytes, part_number: int):
-#         upload_file_part = await put_files.asyncio(
-#             client=client,
-#             body=PutFilesBody(
-#                 key=test_key_2,
-#                 upload_id=big_file_start.upload_id,
-#                 part=part_number,
-#                 file=File(
-#                     payload=io.BytesIO(chunk),
-#                     file_name=os.path.basename(TEST_LOCAL_FILE),
-#                     mime_type="video/mp4",
-#                 ),
-#             ),
-#         )
-#         if not isinstance(upload_file_part, R2UploadedPart):
-#             print(upload_file_part)
-#             raise Exception(f"No part returned for part {part_number}")
-#         return R2UploadedPartBody(
-#             etag=upload_file_part.etag, part_number=upload_file_part.part_number
-#         )
+async def upload_big_file():
+    async def upload_chunk(chunk: bytes, part_number: int):
+        upload_file_part = await put_files.asyncio(
+            client=client,
+            body=PutFilesBody(
+                key=test_key_3, 
+                upload_id=big_file_start.upload_id,
+                part=part_number,
+                file=File(
+                    payload=io.BytesIO(chunk),
+                    file_name=os.path.basename(TEST_BIG_FILE),
+                    mime_type="video/mp4",
+                ),
+            ),
+        )
+        if not isinstance(upload_file_part, R2UploadedPart):
+            print(upload_file_part)
+            raise Exception(f"No part returned for part {part_number}")
+        return R2UploadedPartBody(
+            etag=upload_file_part.etag, part_number=upload_file_part.part_number
+        )
 
-#     chunks = [chunk async for chunk in chunk_reader(file_object, MAX_PART_SIZE)]
-#     parts = await asyncio.gather(*[upload_chunk(chunk, i+1) for i, chunk in enumerate(chunks)])
-#     return parts
+    chunks = [chunk async for chunk in chunk_reader(big_file_object, MAX_PART_SIZE)]
+    parts = await asyncio.gather(*[upload_chunk(chunk, i+1) for i, chunk in enumerate(chunks)])
+    return parts
 
-# parts = asyncio.run(upload_big_file())
+parts = asyncio.run(upload_big_file())
 
-# end_big_multi_part_upload = post_files.sync(
-#     client=client,
-#     key=test_key_2,
-#     upload_id=big_file_start.upload_id,
-#     body=parts,
-#     visibility=Visibility.PRIVATE,
-# )
+end_big_multi_part_upload = post_files.sync(
+    client=client,
+    key=test_key_3,
+    upload_id=big_file_start.upload_id,
+    body=parts,
+    visibility=Visibility.PRIVATE,
+)
 
-# get_big_file = get_files.sync_detailed(client=client, key=test_key_2)
+get_big_file = get_files.sync_detailed(client=client, key=test_key_2)
 
 file_object.close()
+big_file_object.close()
+
 
 if __name__ == "__main__":
     console.print(file_uploaded)

@@ -8,7 +8,7 @@ __all__ = ['secret', 'database_url', 'database', 'database_superuser', 'T', 'Per
            'Query', 'Mutation', 'get_context']
 
 # %% ../nbs/09_graphql.ipynb 3
-from typing import Annotated, Any, Union, cast, Sequence, Callable, TypeVar, TypedDict
+from typing import Annotated, Any, Union, cast, Sequence, Callable, TypeVar, TypedDict, AsyncIterable
 from functools import wraps
 
 from uuid import UUID
@@ -16,6 +16,7 @@ import strawberry
 import jwt
 from jwt.exceptions import InvalidTokenError
 from fastapi import FastAPI
+from .filesystems import R2StorageClient, FilePathType
 from product_horse.db import (
     SqlModelDatabase,
     Employee,
@@ -23,7 +24,7 @@ from product_horse.db import (
     Company,
     UnvalidatedCompany,
     CreateEmployee,
-    User,
+    User as DbUser,
     Video,
     Utterance,
     UtteranceSegment,
@@ -38,6 +39,8 @@ from pydantic import ValidationError
 from strawberry.permission import BasePermission
 from strawberry.file_uploads import Upload
 from strawberry.fastapi import BaseContext, GraphQLRouter
+from starlette.datastructures import UploadFile
+
 from dotenv import load_dotenv
 import os
 
@@ -109,6 +112,19 @@ class Context(BaseContext):
         # run on superuser connection, since it's behind jwt auth
         employee = database_superuser.get_employee(employee_id=employee_id)
         return employee
+    
+    @property
+    def jwt(self):
+        request = self.request
+        if request is None:
+            return None
+        authorization = request.headers.get("Authorization")
+        if authorization is None:
+            return None
+        if not authorization.startswith("Bearer "):
+            return None
+        token = authorization.split()[1]
+        return token
 
 
 class IsAuthenticated(BasePermission):
@@ -162,7 +178,7 @@ class Employee:
     permission_level: PermissionsLevel
 
 
-@strawberry.experimental.pydantic.type(User)
+@strawberry.experimental.pydantic.type(DbUser)
 class User:
     id: UUID
     name: str
@@ -269,7 +285,6 @@ class Query:
 class Mutation:
     @strawberry.mutation
     def login(self, email: str, password: str) -> LoginResponse:
-        print(password)
         employee = database_superuser.authenticate_employee(email, password)
         if employee is None:
             raise Exception("Invalid email or password")
@@ -300,11 +315,37 @@ class Mutation:
             token=create_jwt(employee.id, company.id, employee.permission_level),
         )
 
-    # @strawberry.mutation
-    # def save_files_and_transcriptions(
-    #     self, user_id: UUID, user_name: str, files: Sequence[Upload]
-    # ) -> str:
-    #     raise NotImplementedError
+    @strawberry.mutation
+    async def save_files_and_transcriptions(
+        self,
+        info: strawberry.Info,
+        user_id: UUID,
+        user_name: str,
+        files: Sequence[Upload],
+    ) -> str:
+        r2 = R2StorageClient(
+            # api_url="http://localhost:8787",
+            api_url="https://storage.producthorse.workers.dev/",
+            base_path=info.context.employee.company_id, jwt=info.context.jwt
+        )
+        path = r2.build_user_path(
+            cast(DbUser, User(id=user_id, name=user_name)),
+            FilePathType.USER_ID_BASE_TEXT,
+        )
+        for file in files:
+            try:
+                file = cast(UploadFile, file)
+                name = file.filename
+                content_type = file.content_type if file.content_type is not None else "text/plain"
+                if name is None:
+                    raise Exception("File name is None")
+                contents = await file.read()
+                file = await r2.create_file(path, contents, name, authorized=True, mime_type=content_type)
+                print(file)
+            except Exception as e:
+                print(e)
+                raise Exception(f"Failed to upload file {file}")
+        return "Files uploaded"
 
     # @strawberry.mutation
     # def create_video_from_utterances(
@@ -317,7 +358,7 @@ async def get_context() -> Context:
     return Context()
 
 
-schema = strawberry.Schema(Query, Mutation)
+schema = strawberry.Schema(Query, Mutation, scalar_overrides={UploadFile: Upload})
 
 graphql_app = GraphQLRouter(
     schema,

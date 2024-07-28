@@ -62,7 +62,7 @@ rls-local = '''psql -d product_horse -c "SET app.rls_user_password = '$RLS_USER_
 workers = 'npx wrangler dev'
 setup_d1_local = 'npx wrangler d1 execute ph-storage-db --file=/Users/max/Documents/product_horse/sql_files/setup_d1.sql'
 setup_d1_remote = 'npx wrangler d1 execute ph-storage-db --file=/Users/max/Documents/product_horse/sql_files/setup_d1.sql --remote'
-build_storage_client = 'rye run openapi-python-client generate --path /Users/max/Documents/product_horse/workers/openapi.yaml --output-path /Users/max/Documents/product_horse/storage_client --overwrite'
+build_storage_client = 'rye run openapi-python-client generate --path /Users/max/Documents/product_horse/workers/openapi.yaml --output-path /Users/max/Documents/product_horse/storage_client'
 deploy_worker='npx wrangler deploy'
 
 [build-system]
