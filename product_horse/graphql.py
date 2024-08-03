@@ -4,11 +4,22 @@
 __all__ = ['secret', 'database_url', 'database', 'database_superuser', 'T', 'PermissionsLevel', 'RegisterResponse',
            'LoginResponse', 'schema', 'graphql_app', 'app', 'JwtPayload', 'create_jwt', 'decode_jwt', 'Context',
            'IsAuthenticated', 'FormError', 'FormErrors', 'handle_form_validation_errors', 'Employee', 'User', 'Word',
-           'UtteranceSegment', 'Utterance', 'Clip', 'Video', 'Company', 'RegisterCompanySuccess', 'LoginSuccess',
-           'Query', 'Mutation', 'get_context']
+           'UtteranceSegment', 'Utterance', 'Clip', 'Video', 'Company', 'FileMetadata', 'RegisterCompanySuccess',
+           'LoginSuccess', 'Query', 'Mutation', 'get_context']
 
 # %% ../nbs/09_graphql.ipynb 3
-from typing import Annotated, Any, Union, cast, Sequence, Callable, TypeVar, TypedDict, AsyncIterable
+from typing import (
+    Annotated,
+    Any,
+    Union,
+    cast,
+    Sequence,
+    Callable,
+    TypeVar,
+    TypedDict,
+    List,
+    Optional,
+)
 from functools import wraps
 
 from uuid import UUID
@@ -28,8 +39,11 @@ from product_horse.db import (
     Video,
     Utterance,
     UtteranceSegment,
+    UnvalidatedUser,
     Word,
     Clip,
+    FileMetadata,
+    UnvalidatedFileMetadata,
 )
 from datetime import datetime, timedelta
 
@@ -112,7 +126,7 @@ class Context(BaseContext):
         # run on superuser connection, since it's behind jwt auth
         employee = database_superuser.get_employee(employee_id=employee_id)
         return employee
-    
+
     @property
     def jwt(self):
         request = self.request
@@ -166,7 +180,7 @@ def handle_form_validation_errors(
 
     return wrapper
 
-# %% ../nbs/09_graphql.ipynb 6
+# %% ../nbs/09_graphql.ipynb 7
 PermissionsLevel = strawberry.enum(DbPermissionLevel)
 
 
@@ -233,6 +247,12 @@ class Company:
     employees: list[Employee]
 
 
+@strawberry.experimental.pydantic.type(FileMetadata)
+class FileMetadata:
+    id: UUID
+    name: str
+    file_path: str
+
 @strawberry.type
 class RegisterCompanySuccess:
     company: Company
@@ -264,13 +284,21 @@ class Query:
 
     @strawberry.field(permission_classes=[IsAuthenticated])
     def get_users(self, info: strawberry.Info) -> Sequence[User]:
-        return database.as_employee(info.context.employee).get_all_users()
+        return database.as_employee(info.context.employee).get_all_users()  # type: ignore
 
     # @strawberry.field(permission_classes=[IsAuthenticated])
-    # def getRelevantUtterances(
-    #     self, info: strawberry.Info, query: str, transcriptIds: Sequence[str]
+    # async def get_relevant_utterances(
+    #     self, info: strawberry.Info, query: str, transcript_ids: Sequence[str]
     # ) -> Sequence[Utterance]:
-    #     raise NotImplementedError
+    #     transcript_uuids = [UUID(transcript_id) for transcript_id in transcript_ids]
+    #     transcripts = database.as_employee(info.context.employee).get_transcriptions(transcription_ids=transcript_uuids)
+    #     utterances = await get_relevant_utterances_from_query(
+    #         db=database,
+    #         employee=info.context.employee,
+    #         query=query,
+    #         transcripts=transcripts,
+    #     )
+    #     return utterances # type: ignore
 
     # @strawberry.field(permission_classes=[IsAuthenticated])
     # def get_video(self, info: strawberry.Info, video_id: str) -> Video:
@@ -289,7 +317,7 @@ class Mutation:
         if employee is None:
             raise Exception("Invalid email or password")
         return LoginSuccess(
-            employee=employee,
+            employee=employee,  # type: ignore
             token=create_jwt(
                 employee.id, employee.company_id, employee.permission_level
             ),
@@ -311,41 +339,68 @@ class Mutation:
             company_to_save, employee_to_save
         )
         return RegisterCompanySuccess(
-            company=company,
+            company=company,  # type: ignore
             token=create_jwt(employee.id, company.id, employee.permission_level),
         )
+
+    @strawberry.mutation(permission_classes=[IsAuthenticated])
+    def save_user(self, info: strawberry.Info, name: str, external_id: Optional[str] = None) -> User:
+        external_id = external_id if external_id is not None else ""
+        user = UnvalidatedUser(
+            name=name,
+            external_id=external_id,
+            company_id=info.context.employee.company_id,
+            created_by_id=info.context.employee.id,
+        )
+        return database.as_employee(info.context.employee).save_user(user)  # type: ignore
 
     @strawberry.mutation
     async def save_files_and_transcriptions(
         self,
         info: strawberry.Info,
         user_id: UUID,
-        user_name: str,
         files: Sequence[Upload],
-    ) -> str:
+    ) -> List[FileMetadata]:
         r2 = R2StorageClient(
             # api_url="http://localhost:8787",
             api_url="https://storage.producthorse.workers.dev/",
-            base_path=info.context.employee.company_id, jwt=info.context.jwt
+            base_path=info.context.employee.company_id,
+            jwt=info.context.jwt,
         )
-        path = r2.build_user_path(
-            cast(DbUser, User(id=user_id, name=user_name)),
-            FilePathType.USER_ID_BASE_TEXT,
-        )
+        user = database.as_employee(info.context.employee).get_user(user_id)
+        if user is None:
+            raise Exception("User not found")
+        path = r2.build_user_path(user, FilePathType.USER_ID_BASE_TEXT)
+        metadata: List[FileMetadata] = []
         for file in files:
             try:
                 file = cast(UploadFile, file)
                 name = file.filename
-                content_type = file.content_type if file.content_type is not None else "text/plain"
+                content_type = (
+                    file.content_type if file.content_type is not None else "text/plain"
+                )
                 if name is None:
                     raise Exception("File name is None")
                 contents = await file.read()
-                file = await r2.create_file(path, contents, name, authorized=True, mime_type=content_type)
-                print(file)
+                file = await r2.create_file(
+                    path, contents, name, authorized=True, mime_type=content_type
+                )
+                unvalidated_metadata = UnvalidatedFileMetadata(
+                    user_id=user.id,
+                    file_name=name,
+                    file_path=file.uri,
+                    created_by_id=info.context.employee.id,
+                    company_id=info.context.employee.company_id,
+                )
+                metadata.append(
+                    database.as_employee(info.context.employee).save_file_metadata(
+                        unvalidated_metadata
+                    )
+                )
             except Exception as e:
                 print(e)
                 raise Exception(f"Failed to upload file {file}")
-        return "Files uploaded"
+        return metadata
 
     # @strawberry.mutation
     # def create_video_from_utterances(
@@ -353,7 +408,7 @@ class Mutation:
     # ) -> str:
     #     raise NotImplementedError
 
-# %% ../nbs/09_graphql.ipynb 7
+# %% ../nbs/09_graphql.ipynb 8
 async def get_context() -> Context:
     return Context()
 

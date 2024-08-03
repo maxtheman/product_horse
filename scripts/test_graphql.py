@@ -1,6 +1,7 @@
 import unittest
 import requests
 import json
+import uuid
 
 JWT_TO_USE = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6Ijk1NmVkNWE5LWRjMmEtNDdiMS05NGFmLWFjYTQ1YTI3NDBjMyIsImNvbXBhbnlfaWQiOiJmZTE2NDI4Yi1mYTM4LTRhNGQtYjRmMC1mM2EyMGRlYWFmYjkiLCJleHAiOjE3MjMzMjkyMDgsInBlcm1pc3Npb25fbGV2ZWwiOjN9.iDZDTTaYiBwCnDKE62Kl1VomWxmqRp80cwrCmfQGujE"
 
@@ -8,30 +9,49 @@ PATH_TO_TEST_FILE = "/Users/max/Documents/product_horse/static_files/temp-videos
 PATH_TO_BIG_FILE = "/Users/max/Documents/product_horse/static_files/temp-videos/How_do_you_think_about_what_the_Value_of_Pave_is_t.mp4"
 
 class TestGraphQL(unittest.TestCase):
-    def test_upload_file(self):
+    def test_create_user_and_upload_file(self):
         url = "http://127.0.0.1:8000/graphql"
+        uuid_to_test = str(uuid.uuid4())
         headers = {
             "Authorization": f"Bearer {JWT_TO_USE}"
         }
+        query_user = """
+        mutation SaveUser($userName: String!) {
+            saveUser(name: $userName) {
+                id
+                name
+            }
+        }
+        """
+        operations_user = {
+            "query": query_user,
+            "variables": {
+                "userName": "TestEmployee"
+            }
+        }
+        response_user = requests.post(url, headers=headers, json=operations_user)
+        self.assertEqual(response_user.status_code, 200, "User creation failed")
+        print('user response', response_user.json())
+        self.assertTrue('id' in response_user.json()['data']['saveUser'])
+        user_id = response_user.json()['data']['saveUser']['id']
         query = """
-        mutation SaveFilesAndTranscriptions($userId: UUID!, $userName: String!, $files: [Upload!]!) {
-            saveFilesAndTranscriptions(userId: $userId, userName: $userName, files: $files)
+        mutation SaveFilesAndTranscriptions($userId: UUID!, $files: [Upload!]!) {
+            saveFilesAndTranscriptions(userId: $userId, files: $files) {
+                id
+            }
         }
         """
         operations = {
             "query": query,
             "variables": {
-                "userId": "956ed5a9-dc2a-47b1-94af-aca45a2740c3",
-                "userName": "TestUser",
+                "userId": user_id,
                 "files": [None]
             }
         }
         file = open(PATH_TO_BIG_FILE, "rb")
-        import uuid
-        uuid = str(uuid.uuid4())
         try:
             files = {
-                "0": (f"{uuid}.mp4", file, "video/mp4")
+                "0": (f"{uuid_to_test}.mp4", file, "video/mp4")
             }
             map = {"0": ["variables.files.0"]}
             
@@ -41,6 +61,8 @@ class TestGraphQL(unittest.TestCase):
             }, files=files)
             self.assertEqual(response.status_code, 200) 
             print(response.json())
+            self.assertTrue('data' in response.json())
+            self.assertTrue('id' in response.json()['data']['saveFilesAndTranscriptions'][0])
         finally:
             file.close()
 
