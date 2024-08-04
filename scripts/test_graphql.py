@@ -38,6 +38,7 @@ class TestGraphQL(unittest.TestCase):
         mutation SaveFilesAndTranscriptions($userId: UUID!, $files: [Upload!]!) {
             saveFilesAndTranscriptions(userId: $userId, files: $files) {
                 id
+                filePath
             }
         }
         """

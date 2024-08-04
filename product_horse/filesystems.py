@@ -5,7 +5,7 @@ __all__ = ['MAX_PART_SIZE', 'File', 'AudioFile', 'VideoFile', 'TextFile', 'FileS
            'LocalFileSystem', 'R2StorageClient']
 
 # %% ../nbs/01_filesystems.ipynb 3
-from typing import Generator, Optional, BinaryIO
+from typing import Generator, Optional
 from pydantic import BaseModel
 from .db import User
 from dataclasses import dataclass, field
@@ -14,9 +14,7 @@ from abc import ABC, abstractmethod
 import shutil
 from contextlib import contextmanager
 
-import asyncio
 import io
-from typing import List, AsyncGenerator
 from storage_client import StorageClient
 
 from uuid import uuid4

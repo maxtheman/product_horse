@@ -116,7 +116,6 @@ class StorageClient:
             File: The uploaded file object.
         """
         start_response = post_files.sync(client=self.client, body=FileCreateStartBody(key=key, visibility=visibility))
-        print(start_response)
         if not isinstance(start_response, R2MultipartUploadResponse):
             raise Exception("Failed to start multipart upload")
 
@@ -153,7 +152,6 @@ class StorageClient:
             part_number += 1
 
         parts = await asyncio.gather(*upload_tasks)
-        print(parts)
 
         complete_response = post_files.sync_detailed(
             client=self.client,
