@@ -14,5 +14,9 @@ binding = "DB" # This will be how you refer to your database in your Worker
 database_name = "ph-storage-db"
 database_id = "e6ba068e-e5ac-49c8-8141-ff17ba6c4f55"
 
+[[kv_namespaces]]
+binding='SIGNED_URL_KEYS'
+id='82a63d66fc1142b894a814197e76dc6d'
+
 [vars]
 SECRET = "secrasdfadsfasdfafsdasdfet" #must be same as app secret

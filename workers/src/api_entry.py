@@ -32,9 +32,11 @@ from typing import Optional, Any
 from enum import Enum
 from datetime import datetime
 from dataclasses import field, dataclass, asdict
-from pyodide.ffi import JsException, to_js as _to_js, JsProxy
+from pyodide.ffi import JsException, to_js as _to_js
 from urllib.parse import unquote
 import json
+import uuid
+import time
 
 
 class DataSize(Enum):
@@ -51,6 +53,26 @@ def get_body(value, convert, cache):
         return value.body
     else:
         pass
+
+async def generate_signed_url_token(env: Env, file_key, expiration_seconds=300):
+    token = str(uuid.uuid4())
+    expiration = int(time.time()) + expiration_seconds
+    value = f"{expiration}:{file_key}"
+    await env.SIGNED_URL_KEYS.put(token, value)
+    return token
+
+async def validate_signed_url(env: Env, token):
+    value = await env.SIGNED_URL_KEYS.get(token)
+    if not value:
+        return None
+    
+    expiration, file_key = value.split(':', 1)
+    if int(time.time()) > int(expiration):
+        env.SIGNED_URL_KEYS.delete(token)
+        return None
+    
+    env.SIGNED_URL_KEYS.delete(token)
+    return file_key
 
 
 def r2object_converter(value, convert, cache):
@@ -168,7 +190,7 @@ async def get_file(
     d1: D1Database,
     options: GetOptions | R2ListOptions | None,
 ):
-    # TODO: check intended file visibility
+    # Check file access?
     if options is None and key is not None:
         object: R2Object | R2ObjectBody = await bucket.get(key)
         return object
@@ -452,7 +474,8 @@ async def on_fetch(request: WorkerRequestType, env: Env):
     except ValueError:
         js_error = json.dumps({"error": "Invalid method"})
         return Response.json(js_error, status=405)
-    url_path = request.url.split("/")[-1]
+    url_parts = request.url.split("/")
+    url_path = url_parts[-1]
     params = {}
     try:
         param_string = ""
@@ -466,8 +489,15 @@ async def on_fetch(request: WorkerRequestType, env: Env):
             }
         elif "=" in param_string:
             params = {param_string.split("=")[0]: param_string.split("=")[1]}
+        else:
+            params = {}
     except ValueError:
-        params = {}
+        pass
+    if 'download' in url_parts and 'token' in url_parts:
+        url_path = url_parts[-3]
+    elif 'download' in url_parts and 'token' not in url_parts:
+        url_path = request.url.split("/")[-2]
+        params['token'] = url_parts[-1].split('=')[1]
     try:
         employee = await authenticate_employee(request.headers["X-API-Key"], env)
     except (AssertionError, ValueError) as e:
@@ -488,11 +518,41 @@ async def on_fetch(request: WorkerRequestType, env: Env):
         print(f"Error: {e}")
         js_error = json.dumps({"error": str(e)})
         return Response.json(js_error, status=400)
-    if url_path not in ["files"]:
+    if url_path not in ["files", "download"]:
         js_error = json.dumps({"error": "Not found"})
         return Response.json(js_error, status=404)
     match method:
         case Method.GET:
+            if url_path == "download":
+                # /download/<file_key>?token=<token>
+                file_key = url_parts[-1]
+                token = params.get("token")
+                if token:
+                    file_key = file_key.split('?')[0]
+                    print(f"Downloading file: {file_key}")
+                    print('token:', token, 'type:', type(token))
+                    validated_key = await validate_signed_url(env, token)
+                    print('validated_key:', validated_key, 'file_key:', file_key, 'type:', type(validated_key))
+                    if validated_key != file_key:
+                        return Response.json(to_js({"error": "Invalid or expired token"}), status=404)
+                    try:
+                        file = await get_file(file_key, employee, env.BUCKET, env.DB, None)
+                        if file is None:
+                            raise FileNotFoundError("File not found")
+                        headers = Headers.new()
+                        headers.set("Content-Disposition", f'filename="{file.key}"')
+                        readable_stream = file.to_py(default_converter=get_body)
+                        headers.set("Content-Type", "application/octet-stream")
+                        return Response.new(readable_stream, headers=headers, status=200)
+                    except Exception as e:
+                        return Response.json(to_js({"error": str(e)}), status=404)
+                elif 'token' in url_parts:
+                    token = await generate_signed_url_token(env, file_key)
+                    if not token:
+                        return Response.json(to_js({"error": "Failed to generate token"}), status=500)
+                    return Response.json(to_js({"token": token}), status=200)
+                else:
+                    return Response.json(to_js({"error": "Invalid request."}), status=400)
             if params == {}:
                 js_error = json.dumps({"error": "Invalid request - no params on GET."})
                 return Response.json(js_error, status=400)

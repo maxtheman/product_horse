@@ -395,6 +395,8 @@ class Mutation:
             base_path=info.context.employee.company_id,
             jwt=info.context.jwt,
         )
+        """Takes a long time to respond because it's transcibing and saving each file.
+        In the future could be restructured to save all files and then transcribe in the background."""
         user = database.as_employee(info.context.employee).get_user(user_id)
         if user is None:
             raise Exception("User not found")
@@ -426,7 +428,7 @@ class Mutation:
                 metadata.append(
                     file_metadata # type: ignore
                 )
-                await transcribe_and_save_file(file_metadata, info.context.employee, database)
+                # await transcribe_and_save_file(file_metadata, info.context.employee, database) doesn't work - needs signed url
             except Exception as e:
                 print(e)
                 raise Exception(f"Failed to upload file {file}")

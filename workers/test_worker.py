@@ -88,6 +88,39 @@ class TestAPI(unittest.TestCase):
         self.assertIsInstance(response.json()["objects"], list)
         self.assertEqual(len(response.json()["objects"]), 2)
 
+    def test_get_file_with_signed_url(self):
+        """Check that I can get a public signed url for a file"""
+        key_to_test = str(uuid4())
+        files = {
+            'file': (f'{key_to_test}.txt', io.BytesIO(b'example content'), 'text/plain'),
+        }
+        data = {
+            'key': f'{key_to_test}.txt',
+            'visibility': 'PUBLIC',
+        }
+        setup_by_putting_file = requests.put(
+            f"{self.BASE_URL}/files", headers=self.HEADERS, files=files, data=data
+        )
+        self.assertEqual(setup_by_putting_file.status_code, 200)
+        response = requests.get(
+            f"{self.BASE_URL}/download/token/{key_to_test}.txt", headers=self.HEADERS
+        )
+        self.assertEqual(response.status_code, 200, f"token creation status code should be 200, got {response.json()}")
+        self.assertIsInstance(response.json()["token"], str)
+        one_time_use = requests.get(
+            f"{self.BASE_URL}/download/{key_to_test}.txt", headers=self.HEADERS,
+            params={"token": response.json()["token"]}
+        )
+        print(one_time_use.content)
+        self.assertEqual(one_time_use.status_code, 200)
+        self.assertEqual(one_time_use.content, b'example content')
+        # Check that the signed url is invalid after one use
+        one_time_use_b = requests.get(
+            f"{self.BASE_URL}/download/{key_to_test}.txt", headers=self.HEADERS,
+            params={"token": response.json()["token"]}
+        )
+        self.assertEqual(one_time_use_b.status_code, 404)
+
     def test_multi_part_upload_e2e(self):
         key_to_test = str(uuid4())
         data = {"key": key_to_test, "visibility": "PUBLIC"}
@@ -179,6 +212,8 @@ class TestAPI(unittest.TestCase):
         files = list_response.json()["objects"]
         self.assertEqual(len(files), 2)
         self.assertEqual(files[0]["key"], key)
+        # assert that the second file is not in the list
+        self.assertNotEqual(files[1]["key"], key)
 
     def test_missing_api_key(self):
         response = requests.get(f"{self.BASE_URL}/files", params={"limit": 1})
