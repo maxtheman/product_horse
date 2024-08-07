@@ -3,6 +3,56 @@ info:
   title: storage
   version: 1.0.0
 paths:
+  /download/{file_key}:
+    get:
+      summary: Download a file
+      parameters:
+        - in: path
+          name: file_key
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: token
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful file download
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /download/{file_key}/token:
+    get:
+      summary: Generate a download token for a file
+      parameters:
+        - in: path
+          name: file_key
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful token generation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
   /files:
     get:
       summary: Get file or list files

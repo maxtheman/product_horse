@@ -400,7 +400,6 @@ class Mutation:
         user = database.as_employee(info.context.employee).get_user(user_id)
         if user is None:
             raise Exception("User not found")
-        path = r2.build_user_path(user, FilePathType.USER_ID_BASE_TEXT)
         metadata: List[FileMetadata] = []
         for file in files:
             try:
@@ -412,6 +411,8 @@ class Mutation:
                 if name is None:
                     raise Exception("File name is None")
                 contents = await file.read()
+                path = r2.build_user_path(user, FilePathType.USER_ID_BASE_TEXT)
+                path = f"{path}/{name}"
                 file = await r2.create_file(
                     path, contents, name, authorized=True, mime_type=content_type
                 )
@@ -428,6 +429,8 @@ class Mutation:
                 metadata.append(
                     file_metadata # type: ignore
                 )
+                signed_url = r2.get_signed_url(file_metadata.file_path)
+                print(f"Signed URL: {signed_url}")
                 # await transcribe_and_save_file(file_metadata, info.context.employee, database) doesn't work - needs signed url
             except Exception as e:
                 print(e)

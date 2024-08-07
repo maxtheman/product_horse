@@ -33,7 +33,7 @@ from enum import Enum
 from datetime import datetime
 from dataclasses import field, dataclass, asdict
 from pyodide.ffi import JsException, to_js as _to_js
-from urllib.parse import unquote
+from urllib.parse import urlparse, parse_qs, unquote
 import json
 import uuid
 import time
@@ -182,6 +182,24 @@ class ListOptions:
             raise ValueError("Limit must be between 1 and 1000")
         self._limit = value
 
+
+def sanitize_string(s: str) -> str:
+    return s.replace(' ', '_').strip('/')
+
+def get_url_path_and_params(url: str) -> tuple[str, dict[str, str]]:
+    parsed_url = urlparse(url)
+    # print('parsed_url', parsed_url)
+    url_path = unquote(parsed_url.path).strip('/')
+    params = {k: sanitize_string(unquote(v[0])) for k, v in parse_qs(parsed_url.query).items()}
+    if url_path.startswith('download/token'):
+        file_name = sanitize_string(url_path[len('download/token'):])
+        params['file_name'] = file_name
+        url_path = 'download'
+    elif url_path.startswith('download/'):
+        file_name = sanitize_string(url_path[len('download/'):])
+        params['file_name'] = file_name
+        url_path = 'download'
+    return url_path, params
 
 async def get_file(
     key: str | None,
@@ -474,30 +492,7 @@ async def on_fetch(request: WorkerRequestType, env: Env):
     except ValueError:
         js_error = json.dumps({"error": "Invalid method"})
         return Response.json(js_error, status=405)
-    url_parts = request.url.split("/")
-    url_path = url_parts[-1]
-    params = {}
-    try:
-        param_string = ""
-        if "?" in url_path:
-            param_string = url_path.split("?")[-1]
-            url_path = url_path.split("?")[0]
-        if "&" in param_string:
-            param_strings = param_string.split("&")
-            params = {
-                param.split("=")[0]: param.split("=")[1] for param in param_strings
-            }
-        elif "=" in param_string:
-            params = {param_string.split("=")[0]: param_string.split("=")[1]}
-        else:
-            params = {}
-    except ValueError:
-        pass
-    if 'download' in url_parts and 'token' in url_parts:
-        url_path = url_parts[-3]
-    elif 'download' in url_parts and 'token' not in url_parts:
-        url_path = request.url.split("/")[-2]
-        params['token'] = url_parts[-1].split('=')[1]
+    url_path, params = get_url_path_and_params(request.url)
     try:
         employee = await authenticate_employee(request.headers["X-API-Key"], env)
     except (AssertionError, ValueError) as e:
@@ -525,10 +520,9 @@ async def on_fetch(request: WorkerRequestType, env: Env):
         case Method.GET:
             if url_path == "download":
                 # /download/<file_key>?token=<token>
-                file_key = url_parts[-1]
+                file_key = params.get("file_name")
                 token = params.get("token")
                 if token:
-                    file_key = file_key.split('?')[0]
                     print(f"Downloading file: {file_key}")
                     print('token:', token, 'type:', type(token))
                     validated_key = await validate_signed_url(env, token)
@@ -546,7 +540,7 @@ async def on_fetch(request: WorkerRequestType, env: Env):
                         return Response.new(readable_stream, headers=headers, status=200)
                     except Exception as e:
                         return Response.json(to_js({"error": str(e)}), status=404)
-                elif 'token' in url_parts:
+                elif not token:
                     token = await generate_signed_url_token(env, file_key)
                     if not token:
                         return Response.json(to_js({"error": "Failed to generate token"}), status=500)

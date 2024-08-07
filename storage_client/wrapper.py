@@ -4,9 +4,10 @@ from dataclasses import dataclass
 from typing import Any, BinaryIO, Coroutine, Dict, List, Union, cast
 
 from storage_client.src import AuthenticatedClient
-from storage_client.src.api.default import get_files, post_files, put_files
+from storage_client.src.api.default import get_download_file_key_token, get_files, post_files, put_files
 from storage_client.src.models import (
     FileCreateStartBody,
+    GetDownloadFileKeyTokenResponse200,
     PutFilesBody,
     R2MultipartUploadResponse,
     R2Object,
@@ -17,7 +18,7 @@ from storage_client.src.models import (
 from storage_client.src.models import (
     Visibility as APIVisibility,
 )
-from storage_client.src.types import File
+from storage_client.src.types import File, Unset
 
 """
 Example usage:
@@ -132,7 +133,7 @@ class StorageClient:
                     file=File(payload=io.BytesIO(chunk), file_name=key, mime_type=mime_type),
                 ),
             )
-            if not isinstance(part_response, R2UploadedPart):
+            if not hasattr(part_response, "etag"):
                 raise Exception(f"Failed to upload part {part_number}")
             return R2UploadedPartBody(etag=part_response.etag, part_number=part_number)
 
@@ -177,6 +178,25 @@ class StorageClient:
         if isinstance(response, File):
             return response.payload
         raise Exception(f"Failed to download file: {key}")
+
+    def get_signed_url(self, key: str) -> str:
+        """
+        Get a signed URL for a file.
+
+        Args:
+            key (str): The key (path) of the file.
+
+        Returns:
+            str: A signed URL for the file.
+        """
+        response = get_download_file_key_token.sync(client=self.client, file_key=key)
+        if isinstance(response, GetDownloadFileKeyTokenResponse200):
+            token = response.token
+            if token is not Unset:
+                return f"{self.base_url}/download/{token}"
+            else:
+                raise Exception(f"Failed to get signed URL for file: {key}")
+        raise Exception(f"Failed to get signed URL for file: {key}")
 
     def get_file_metadata(self, key: str) -> Dict[str, Any]:
         """

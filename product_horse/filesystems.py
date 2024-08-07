@@ -331,6 +331,9 @@ class R2StorageClient(AbstractFileSystem):
 
     def delete_file(self, path: str) -> File:
         raise NotImplementedError("This client doesn't support file deletion yet.")
+    
+    def get_signed_url(self, path: str) -> str:
+        return self.client.get_signed_url(path)
 
     @contextmanager
     def temporary_user_directory(self, user: User) -> Generator[str, None, None]:
