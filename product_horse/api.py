@@ -200,9 +200,9 @@ async def get_relevant_utterances_from_query(
     Returns time-sorted utterances from a query
     """
     # allow for several clips from each transcript
-    clips_requested = int(max(len(transcripts) * 2, 50))
+    clips_requested = int(min(len(transcripts) * 2, 50))
     search_engine = SearchEngine(
-        seconds_buffer=8, similarity_top_k=clips_requested, db=db, employee=employee
+        seconds_buffer=2, similarity_top_k=clips_requested, db=db, employee=employee
     )
     utterances = await search_engine.get_utterances_from_query(query, transcripts)
 

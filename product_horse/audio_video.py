@@ -53,6 +53,17 @@ from rich.console import Console
 load_dotenv()
 
 # %% ../nbs/03_audio_video.ipynb 7
+from product_horse.db import (
+    SqlModelDatabase,
+    UnvalidatedWord,
+    UnvalidatedUser,
+    UnvalidatedTranscription,
+    UnvalidatedFileMetadata,
+    CreateEmployee,
+    UnvalidatedCompany,
+    PermissionLevel,
+)
+
 class AudioEditor:
     api_key: str | None = None
 

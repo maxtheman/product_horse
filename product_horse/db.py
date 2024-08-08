@@ -1290,6 +1290,7 @@ class SqlModelDatabase(AbstractDatabase["SqlModelDatabase"]):
                 select(Transcription)
                 .join(FileMetadata)
                 .options(joinedload(Transcription.file_metadata))  # type: ignore - selectinload type is weird
+                .options(joinedload(Transcription.utterances))  # type: ignore - selectinload type is weird
                 .where(col(Transcription.id).in_(transcription_ids))
             )
         else:
@@ -1299,7 +1300,7 @@ class SqlModelDatabase(AbstractDatabase["SqlModelDatabase"]):
                 .options(joinedload(Transcription.file_metadata))  # type: ignore - selectinload type is weird
                 .where(FileMetadata.user_id == user_id)
             )
-        return session.exec(transcript_with_file_meta).all()
+        return session.exec(transcript_with_file_meta).unique().all()
 
     @write
     def update_transcription(

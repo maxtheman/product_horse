@@ -5,7 +5,8 @@ __all__ = ['secret', 'database_url', 'database', 'database_superuser', 'api_key'
            'RegisterResponse', 'LoginResponse', 'schema', 'graphql_app', 'app', 'JwtPayload', 'create_jwt',
            'decode_jwt', 'Context', 'IsAuthenticated', 'FormError', 'FormErrors', 'handle_form_validation_errors',
            'transcribe_and_save_file', 'Employee', 'User', 'Word', 'UtteranceSegment', 'Utterance', 'Clip', 'Video',
-           'Company', 'FileMetadata', 'RegisterCompanySuccess', 'LoginSuccess', 'Query', 'Mutation', 'get_context']
+           'Company', 'FileMetadata', 'Transcription', 'RegisterCompanySuccess', 'LoginSuccess', 'Query', 'Mutation',
+           'get_context']
 
 # %% ../nbs/09_graphql.ipynb 3
 from typing import (
@@ -58,6 +59,7 @@ from strawberry.permission import BasePermission
 from strawberry.file_uploads import Upload
 from strawberry.fastapi import BaseContext, GraphQLRouter
 from starlette.datastructures import UploadFile
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 from dotenv import load_dotenv
 import os
@@ -189,6 +191,7 @@ def handle_form_validation_errors(
     return wrapper
 
 # %% ../nbs/09_graphql.ipynb 6
+@retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=4, max=15))
 async def transcribe_and_save_file(
     file_metadata: FileMetadata, signed_url: str, employee: Employee, db: SqlModelDatabase
 ) -> Transcription:
@@ -281,6 +284,16 @@ class FileMetadata:
     name: str
     file_path: str
 
+@strawberry.experimental.pydantic.type(Transcription)
+class Transcription:
+    id: UUID
+    text: str
+    created_at: datetime
+    updated_at: datetime
+    embedded: Optional[bool]
+    utterances: list[Utterance]
+    file_metadata: FileMetadata
+
 @strawberry.type
 class RegisterCompanySuccess:
     company: Company
@@ -313,6 +326,11 @@ class Query:
     @strawberry.field(permission_classes=[IsAuthenticated])
     def get_users(self, info: strawberry.Info) -> Sequence[User]:
         return database.as_employee(info.context.employee).get_all_users()  # type: ignore
+    
+    @strawberry.field(permission_classes=[IsAuthenticated])
+    def get_transcripts(self, info: strawberry.Info) -> Sequence[Transcription]:
+        transcripts = database.as_employee(info.context.employee).get_all_unique_transcriptions(mode="file_name")
+        return transcripts # type: ignore
 
     @strawberry.field(permission_classes=[IsAuthenticated])
     async def get_relevant_utterances(
@@ -320,20 +338,25 @@ class Query:
     ) -> Sequence[Utterance]:
         transcript_uuids = [UUID(transcript_id) for transcript_id in transcript_ids]
         transcripts = database.as_employee(info.context.employee).get_transcriptions(transcription_ids=transcript_uuids)
+        # possible that this won't work if there are too few utterances to query?
         utterances = await get_relevant_utterances_from_query(
             db=database,
             employee=info.context.employee,
             query=query,
             transcripts=transcripts,
         )
+        print(f"utterances: {utterances}")
         return utterances # type: ignore
 
-    # @strawberry.field(permission_classes=[IsAuthenticated])
-    # def get_video(self, info: strawberry.Info, video_id: str) -> Video:
-    #     raise NotImplementedError
+    @strawberry.field(permission_classes=[IsAuthenticated])
+    def get_video(self, info: strawberry.Info, video_id: str) -> Video:
+        video = database.as_employee(info.context.employee).get_video(video_id)
+        if video is None:
+            raise Exception("Video not found")
+        return video
 
     # @strawberry.field(permission_classes=[IsAuthenticated])
-    # def get_videos(self, info: strawberry.Info) -> Sequence[Video]:
+    # def get_all_videos(self, info: strawberry.Info) -> Sequence[Video]:
     #     raise NotImplementedError
 
 
@@ -412,6 +435,7 @@ class Mutation:
                     raise Exception("File name is None")
                 contents = await file.read()
                 path = r2.build_user_path(user, FilePathType.USER_ID_BASE_TEXT)
+                print("REMINDER to fix unreliable big uploads!!!!!!!!!!!!!!!!!!!!")
                 file = await r2.create_file(
                     path, contents, name, authorized=True, mime_type=content_type
                 )

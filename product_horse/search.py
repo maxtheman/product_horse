@@ -511,6 +511,7 @@ class SearchEngine:
         self.similarity_top_k = similarity_top_k
         self.path = path
         self.vector_store: Optional[VectorStore] = self._create_client()
+        self.employee = employee
 
     async def _embed_and_augment_nodes(
         self, nodes: List[TextNode]
@@ -549,7 +550,7 @@ class SearchEngine:
         for transcript_id in unique_transcript_ids:
             if not self.db:
                 raise ValueError("Database is None")
-            self.db.update_transcription(UUID(transcript_id), {"embedded": True})
+            self.db.as_employee(self.employee).update_transcription(UUID(transcript_id), {"embedded": True})
         augmented_nodes = await embed_and_augment_nodes(nodes)  # type: ignore
         vector_store = self._create_client()
         try:
@@ -572,6 +573,7 @@ class SearchEngine:
     ) -> Sequence[Utterance]:
         "Returns time-sorted utterances from a query"
         vector_store = self.vector_store
+        print(f"vector store: {vector_store}")
         if vector_store is None:
             raise ValueError("Vector store is None")
         try:
@@ -581,14 +583,16 @@ class SearchEngine:
             if status is False:
                 raise ValueError(message)
         except Exception as e:
-            pprint(e)
+            raise e
         index = TranscriptIndex.from_vector_store(vector_store)
-
         query_engine = index.as_retriever()
         query_bundle: ExtendedQueryBundle = self._make_query(query, transcripts)
+        print(f"query bundle: {query_bundle}")
         query_bundle.seconds_buffer = self.seconds_buffer
         query_bundle.similarity_top_k = self.similarity_top_k
         result = query_engine.retrieve(query_bundle)
+        print(f"result: {result}")
         utterance_ids = [node.node.id_ for node in result]
-        utterances = self.db.as_employee(employee).get_utterances(utterance_ids)
+        print(f"utterance ids: {utterance_ids}")
+        utterances = self.db.as_employee(self.employee).get_utterances(utterance_ids)
         return utterances
