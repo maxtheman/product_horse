@@ -1,5 +1,4 @@
 from cf_types import D1Database, Employee, FileAccess
-from js import console
 from typing import Dict, Any, TypeVar
 
 
@@ -15,6 +14,15 @@ async def does_employee_exist(db: D1Database[Employee], employee_id: str, compan
     )
     check_if_exists_result = await check_if_exists_binding.first()
     return check_if_exists_result is not None
+
+async def get_employee(db: D1Database[Employee], employee_id: str, company_id: str) -> Employee:
+    query = "SELECT * FROM employees WHERE id = ?1 and company_id = ?2"
+    statement = db.prepare(query)
+    binding = statement.bind(employee_id, company_id)
+    result = await binding.first()
+    if result is None:
+        raise ValueError("Employee not found")
+    return result
 
 
 async def check_and_insert_employee(db: D1Database[Employee], employee: Employee):

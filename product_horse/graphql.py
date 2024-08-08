@@ -190,10 +190,10 @@ def handle_form_validation_errors(
 
 # %% ../nbs/09_graphql.ipynb 6
 async def transcribe_and_save_file(
-    file_metadata: FileMetadata, employee: Employee, db: SqlModelDatabase
+    file_metadata: FileMetadata, signed_url: str, employee: Employee, db: SqlModelDatabase
 ) -> Transcription:
     transcription_result = await audio_editor.transcribe(
-        str(file_metadata.file_path), employee
+        signed_url, employee
     )
     utterances: List[UnvalidatedUtterance] = transcription_result.utterances
 
@@ -412,10 +412,10 @@ class Mutation:
                     raise Exception("File name is None")
                 contents = await file.read()
                 path = r2.build_user_path(user, FilePathType.USER_ID_BASE_TEXT)
-                path = f"{path}/{name}"
                 file = await r2.create_file(
                     path, contents, name, authorized=True, mime_type=content_type
                 )
+                print(f"File: {file}")
                 unvalidated_metadata = UnvalidatedFileMetadata(
                     user_id=user.id,
                     file_name=name,
@@ -429,9 +429,11 @@ class Mutation:
                 metadata.append(
                     file_metadata # type: ignore
                 )
+                # fix name issue
                 signed_url = r2.get_signed_url(file_metadata.file_path)
                 print(f"Signed URL: {signed_url}")
-                # await transcribe_and_save_file(file_metadata, info.context.employee, database) doesn't work - needs signed url
+                transcription = await transcribe_and_save_file(file_metadata, signed_url, info.context.employee, database)
+                print(f"Transcription: {transcription}")
             except Exception as e:
                 print(e)
                 raise Exception(f"Failed to upload file {file}")

@@ -25,7 +25,7 @@ from db_ops import (
     check_and_insert_employee,
     insert_file_access,
     check_file_access,
-    remove_file_access,
+    get_employee,
     check_multiple_file_access,
 )
 from typing import Optional, Any
@@ -54,25 +54,38 @@ def get_body(value, convert, cache):
     else:
         pass
 
-async def generate_signed_url_token(env: Env, file_key, expiration_seconds=300):
+
+async def generate_signed_url_token(
+    env: Env, file_key, employee_id, company_id, expiration_seconds=300
+):
     token = str(uuid.uuid4())
+    print(f"File key: {file_key}")
     expiration = int(time.time()) + expiration_seconds
-    value = f"{expiration}:{file_key}"
+    value = f"{expiration}|{file_key}|{employee_id}|{company_id}"
     await env.SIGNED_URL_KEYS.put(token, value)
+    test_get = await env.SIGNED_URL_KEYS.get(token)
+    print(f"Test get: {test_get}")
+    if not test_get:
+        raise ValueError("Failed to generate signed URL token")
     return token
 
+
 async def validate_signed_url(env: Env, token):
+    print(f"Token: {token}")
     value = await env.SIGNED_URL_KEYS.get(token)
     if not value:
         return None
-    
-    expiration, file_key = value.split(':', 1)
+
+    expiration, file_key, employee_id, company_id = value.split("|", 3)
+    print(f"Expiration: {expiration}, file_key: {file_key}, employee_id: {employee_id}, company_id: {company_id}")
+    employee = await get_employee(env.DB, employee_id, company_id)
     if int(time.time()) > int(expiration):
-        env.SIGNED_URL_KEYS.delete(token)
+        print("Token expired")
+        await env.SIGNED_URL_KEYS.delete(token)
         return None
-    
-    env.SIGNED_URL_KEYS.delete(token)
-    return file_key
+
+    await env.SIGNED_URL_KEYS.delete(token)
+    return file_key, employee
 
 
 def r2object_converter(value, convert, cache):
@@ -184,22 +197,25 @@ class ListOptions:
 
 
 def sanitize_string(s: str) -> str:
-    return s.replace(' ', '_').strip('/')
+    return s.replace(" ", "_").strip("/")
+
 
 def get_url_path_and_params(url: str) -> tuple[str, dict[str, str]]:
     parsed_url = urlparse(url)
-    # print('parsed_url', parsed_url)
-    url_path = unquote(parsed_url.path).strip('/')
-    params = {k: sanitize_string(unquote(v[0])) for k, v in parse_qs(parsed_url.query).items()}
-    if url_path.startswith('download/token'):
-        file_name = sanitize_string(url_path[len('download/token'):])
-        params['file_name'] = file_name
-        url_path = 'download'
-    elif url_path.startswith('download/'):
-        file_name = sanitize_string(url_path[len('download/'):])
-        params['file_name'] = file_name
-        url_path = 'download'
+    url_path = unquote(parsed_url.path).strip("/")
+    params = {
+        k: sanitize_string(unquote(v[0])) for k, v in parse_qs(parsed_url.query).items()
+    }
+    if url_path.startswith("download/") and url_path.endswith("/token"):
+        file_path = "/".join(url_path.split("/")[1:-1])  # Exclude 'download' and 'token'
+        params["file_name"] = file_path
+        url_path = "download"
+    elif url_path.startswith("download/"):
+        file_path = "/".join(url_path.split("/")[1:])  # Exclude 'download'
+        params["file_name"] = file_path
+        url_path = "download"
     return url_path, params
+
 
 async def get_file(
     key: str | None,
@@ -483,7 +499,11 @@ async def delete(
 
 
 async def on_fetch(request: WorkerRequestType, env: Env):
-    if "X-API-Key" not in request.headers:
+    url_path, params = get_url_path_and_params(request.url)
+    auth_with_token = (url_path == "download" and "token" in params)
+    print('url_path', url_path)
+    print('params', params)
+    if "X-API-Key" not in request.headers and not auth_with_token:
         print("No X-API-Key")
         js_error = json.dumps({"error": "Unauthorized"})
         return Response.json(js_error, status=401)
@@ -492,9 +512,14 @@ async def on_fetch(request: WorkerRequestType, env: Env):
     except ValueError:
         js_error = json.dumps({"error": "Invalid method"})
         return Response.json(js_error, status=405)
-    url_path, params = get_url_path_and_params(request.url)
+    if url_path not in ["files", "download"]:
+        js_error = json.dumps({"error": "Not found"})
+        return Response.json(js_error, status=404)
     try:
-        employee = await authenticate_employee(request.headers["X-API-Key"], env)
+        if not auth_with_token:
+            employee = await authenticate_employee(request.headers["X-API-Key"], env)
+        else:
+            pass
     except (AssertionError, ValueError) as e:
         print(f"Unauthorized: {e}")
         js_error = json.dumps({"error": "Unauthorized"})
@@ -503,50 +528,73 @@ async def on_fetch(request: WorkerRequestType, env: Env):
         print(f"Error: {e}")
         js_error = json.dumps({"error": "Internal server error"})
         return Response.json(js_error, status=500)
-    try:
-        employee_registered = await check_and_insert_employee(env.DB, employee)
-        if not employee_registered:
-            return Response.json(
-                {"error": "Employee registration failed, check jwt"}, status=400
-            )
-    except ValueError as e:
-        print(f"Error: {e}")
-        js_error = json.dumps({"error": str(e)})
-        return Response.json(js_error, status=400)
-    if url_path not in ["files", "download"]:
-        js_error = json.dumps({"error": "Not found"})
-        return Response.json(js_error, status=404)
+    if not auth_with_token:
+        try:
+            employee_registered = await check_and_insert_employee(env.DB, employee)
+            if not employee_registered:
+                return Response.json(
+                    {"error": "Employee registration failed, check jwt"}, status=400
+                )
+        except ValueError as e:
+            print(f"Error: {e}")
+            js_error = json.dumps({"error": str(e)})
+            return Response.json(js_error, status=400)
     match method:
         case Method.GET:
             if url_path == "download":
+                print(f"Params: {params}")
                 # /download/<file_key>?token=<token>
                 file_key = params.get("file_name")
                 token = params.get("token")
                 if token:
-                    print(f"Downloading file: {file_key}")
-                    print('token:', token, 'type:', type(token))
-                    validated_key = await validate_signed_url(env, token)
-                    print('validated_key:', validated_key, 'file_key:', file_key, 'type:', type(validated_key))
-                    if validated_key != file_key:
-                        return Response.json(to_js({"error": "Invalid or expired token"}), status=404)
                     try:
-                        file = await get_file(file_key, employee, env.BUCKET, env.DB, None)
+                        key_plus_employee = await validate_signed_url(
+                            env, token
+                        )
+                        if key_plus_employee is None:
+                            raise ValueError("Invalid or expired token")
+                        validated_key = key_plus_employee[0]
+                        employee_authorized = key_plus_employee[1]
+                    except ValueError as e:
+                        print(f"Error: {e}")
+                        js_error = json.dumps({"error": str(e)})
+                        return Response.json(js_error, status=400)
+                    if validated_key != file_key:
+                        print(f"File key: {file_key}")
+                        return Response.json(
+                            to_js({"error": "Invalid or expired token"}), status=404
+                        )
+                    try:
+                        file = await get_file(
+                            file_key, employee_authorized, env.BUCKET, env.DB, None
+                        )
                         if file is None:
                             raise FileNotFoundError("File not found")
                         headers = Headers.new()
                         headers.set("Content-Disposition", f'filename="{file.key}"')
                         readable_stream = file.to_py(default_converter=get_body)
                         headers.set("Content-Type", "application/octet-stream")
-                        return Response.new(readable_stream, headers=headers, status=200)
+                        return Response.new(
+                            readable_stream, headers=headers, status=200
+                        )
                     except Exception as e:
                         return Response.json(to_js({"error": str(e)}), status=404)
                 elif not token:
-                    token = await generate_signed_url_token(env, file_key)
+                    token = await generate_signed_url_token(
+                        env,
+                        file_key,
+                        employee_id=employee.id,
+                        company_id=employee.company_id,
+                    )
                     if not token:
-                        return Response.json(to_js({"error": "Failed to generate token"}), status=500)
+                        return Response.json(
+                            to_js({"error": "Failed to generate token"}), status=500
+                        )
                     return Response.json(to_js({"token": token}), status=200)
                 else:
-                    return Response.json(to_js({"error": "Invalid request."}), status=400)
+                    return Response.json(
+                        to_js({"error": "Invalid request."}), status=400
+                    )
             if params == {}:
                 js_error = json.dumps({"error": "Invalid request - no params on GET."})
                 return Response.json(js_error, status=400)
@@ -591,6 +639,8 @@ async def on_fetch(request: WorkerRequestType, env: Env):
                 return response
             return Response.json(file, status=206)
         case Method.POST:
+            if url_path != "files":
+                return Response.json(to_js({"error": "Invalid request"}), status=400)
             try:
                 multi_part_body = await stream_to_json(request.body)
                 upload_id = params.get("upload_id", None)
@@ -611,6 +661,8 @@ async def on_fetch(request: WorkerRequestType, env: Env):
                 return Response.json(js_error, status=400)
             return Response.json(file)
         case Method.PUT:
+            if url_path != "files":
+                return Response.json(to_js({"error": "Invalid request"}), status=400)
             try:
                 if int(request.headers["content-length"]) > DataSize.MB_100.value:
                     raise ValueError("File size too large")
@@ -628,6 +680,8 @@ async def on_fetch(request: WorkerRequestType, env: Env):
 
             return Response.json(file, status=status)
         case Method.DELETE:
+            if url_path != "files":
+                return Response.json(to_js({"error": "Invalid request"}), status=400)
             # file = await delete(request.body, employee, env.BUCKET)
             return Response.json({"message": "Not implemented"}, status=501)
         case _:

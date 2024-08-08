@@ -1,5 +1,5 @@
 from storage_client.src import AuthenticatedClient
-from storage_client.src.api.default import put_files, get_files, post_files
+from storage_client.src.api.default import put_files, get_files, post_files, get_download_file_key_token
 from storage_client.src.models import (
     PutFilesBody,
     Visibility,
@@ -7,6 +7,7 @@ from storage_client.src.models import (
     R2MultipartUploadResponse,
     R2UploadedPartBody,
     R2UploadedPart,
+    GetDownloadFileKeyTokenResponse200
 )
 from storage_client.src.types import File
 import base64
@@ -75,9 +76,11 @@ TEST_BIG_FILE = "/Users/max/Documents/product_horse/static_files/temp-videos/How
 
 TEST_LOCAL_FILE = "/Users/max/Documents/product_horse/static_files/temp-videos/test-viz.mp4"
 
+# url = "https://storage.producthorse.workers.dev/"
+url = "http://localhost:8787"
+
 client = AuthenticatedClient(
-    base_url="https://storage.producthorse.workers.dev/",
-    # base_url="http://localhost:8787",
+    base_url=url,
     token=JWT,
     # verify_ssl=False,
 )
@@ -93,9 +96,18 @@ body = PutFilesBody(
     visibility=Visibility.PUBLIC,
 )
 
+
 file_uploaded = put_files.sync(client=client, body=body)
 
 files_got = get_files.sync_detailed(client=client, limit=1)
+print(test_key)
+test_signed_url = get_download_file_key_token.sync(client=client, file_key=test_key)
+if isinstance(test_signed_url, GetDownloadFileKeyTokenResponse200):
+    url = f"{url}/download/{test_key}?token={test_signed_url.token}"
+    print(url)
+else:
+    raise Exception(f"Failed to get signed URL for file: {test_key}")
+
 
 get_specific_file = get_files.sync(client=client, key=test_key)
 
@@ -149,7 +161,7 @@ if not isinstance(big_file_start, R2MultipartUploadResponse):
 
 async def upload_big_file():
     async def upload_chunk(chunk: bytes, part_number: int):
-        upload_file_part = await put_files.asyncio(
+        upload_file_part = await put_files.asyncio_detailed(
             client=client,
             body=PutFilesBody(
                 key=test_key_3, 
@@ -162,11 +174,11 @@ async def upload_big_file():
                 ),
             ),
         )
-        if not isinstance(upload_file_part, R2UploadedPart):
+        if not isinstance(upload_file_part.parsed, R2UploadedPart):
             print(upload_file_part)
             raise Exception(f"No part returned for part {part_number}")
         return R2UploadedPartBody(
-            etag=upload_file_part.etag, part_number=upload_file_part.part_number
+            etag=upload_file_part.parsed.etag, part_number=upload_file_part.parsed.part_number
         )
 
     chunks = [chunk async for chunk in chunk_reader(big_file_object, MAX_PART_SIZE)]

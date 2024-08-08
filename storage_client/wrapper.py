@@ -3,6 +3,8 @@ import io
 from dataclasses import dataclass
 from typing import Any, BinaryIO, Coroutine, Dict, List, Union, cast
 
+from tenacity import retry, stop_after_attempt, wait_exponential
+
 from storage_client.src import AuthenticatedClient
 from storage_client.src.api.default import get_download_file_key_token, get_files, post_files, put_files
 from storage_client.src.models import (
@@ -42,8 +44,8 @@ metadata = client.get_file_metadata("example.txt")
 files = client.list_files(limit=10)
 """
 
-MAX_PART_SIZE = 10 * 1024 * 1024  # 10 MB
-MAX_CONCURRENT_UPLOADS = 5
+MAX_PART_SIZE = 10 * 1024 * 1024
+MAX_CONCURRENT_UPLOADS = 6
 
 
 @dataclass
@@ -63,6 +65,7 @@ class StorageClient:
         except KeyError:
             raise ValueError(f"Invalid visibility: {visibility}. Must be one of {', '.join(APIVisibility.__members__)}")
 
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=10))
     async def upload_file(self, file: io.BytesIO, key: str, visibility: Union[str, APIVisibility], mime_type: str):
         """
         Upload a file, automatically choosing between small and large file upload methods.
@@ -116,15 +119,16 @@ class StorageClient:
         Returns:
             File: The uploaded file object.
         """
-        start_response = post_files.sync(client=self.client, body=FileCreateStartBody(key=key, visibility=visibility))
-        if not isinstance(start_response, R2MultipartUploadResponse):
+        start_response = post_files.sync_detailed(client=self.client, body=FileCreateStartBody(key=key, visibility=visibility))
+        if not isinstance(start_response.parsed, R2MultipartUploadResponse):
+            print(start_response)
             raise Exception("Failed to start multipart upload")
 
-        upload_id = start_response.upload_id
+        upload_id = start_response.parsed.upload_id
         parts: List[R2UploadedPartBody] = []
 
         async def upload_part(part_number: int, chunk: bytes) -> R2UploadedPartBody:
-            part_response = await put_files.asyncio(
+            part_response = await put_files.asyncio_detailed(
                 client=self.client,
                 body=PutFilesBody(
                     key=key,
@@ -133,9 +137,11 @@ class StorageClient:
                     file=File(payload=io.BytesIO(chunk), file_name=key, mime_type=mime_type),
                 ),
             )
-            if not hasattr(part_response, "etag"):
-                raise Exception(f"Failed to upload part {part_number}")
-            return R2UploadedPartBody(etag=part_response.etag, part_number=part_number)
+            if part_response.status_code == 500:
+                raise Exception(f"Failed to upload part {part_response} - Cloudflare error again :-/)")
+            if not hasattr(part_response.parsed, "etag"):
+                raise Exception(f"Failed to upload part {part_response}")
+            return R2UploadedPartBody(etag=part_response.parsed.etag, part_number=part_number)
 
         semaphore = asyncio.Semaphore(MAX_CONCURRENT_UPLOADS)
 
@@ -161,7 +167,6 @@ class StorageClient:
             body=parts,
             visibility=visibility,
         )
-        print(complete_response)
         return complete_response.parsed
 
     def download_file(self, key: str) -> BinaryIO:
@@ -193,7 +198,7 @@ class StorageClient:
         if isinstance(response, GetDownloadFileKeyTokenResponse200):
             token = response.token
             if token is not Unset:
-                return f"{self.base_url}/download/{token}"
+                return f"{self.base_url}download/{key}?token={token}"
             else:
                 raise Exception(f"Failed to get signed URL for file: {key}")
         raise Exception(f"Failed to get signed URL for file: {key}")

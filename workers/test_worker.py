@@ -103,7 +103,7 @@ class TestAPI(unittest.TestCase):
         )
         self.assertEqual(setup_by_putting_file.status_code, 200)
         response = requests.get(
-            f"{self.BASE_URL}/download/token/{key_to_test}.txt", headers=self.HEADERS
+            f"{self.BASE_URL}/download/{key_to_test}.txt/token", headers=self.HEADERS
         )
         self.assertEqual(response.status_code, 200, f"token creation status code should be 200, got {response.json()}")
         self.assertIsInstance(response.json()["token"], str)
@@ -119,7 +119,7 @@ class TestAPI(unittest.TestCase):
             f"{self.BASE_URL}/download/{key_to_test}.txt", headers=self.HEADERS,
             params={"token": response.json()["token"]}
         )
-        self.assertEqual(one_time_use_b.status_code, 404)
+        self.assertEqual(one_time_use_b.status_code, 400)
 
     def test_multi_part_upload_e2e(self):
         key_to_test = str(uuid4())
