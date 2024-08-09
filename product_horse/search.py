@@ -573,7 +573,6 @@ class SearchEngine:
     ) -> Sequence[Utterance]:
         "Returns time-sorted utterances from a query"
         vector_store = self.vector_store
-        print(f"vector store: {vector_store}")
         if vector_store is None:
             raise ValueError("Vector store is None")
         try:
@@ -587,12 +586,9 @@ class SearchEngine:
         index = TranscriptIndex.from_vector_store(vector_store)
         query_engine = index.as_retriever()
         query_bundle: ExtendedQueryBundle = self._make_query(query, transcripts)
-        print(f"query bundle: {query_bundle}")
         query_bundle.seconds_buffer = self.seconds_buffer
         query_bundle.similarity_top_k = self.similarity_top_k
         result = query_engine.retrieve(query_bundle)
-        print(f"result: {result}")
         utterance_ids = [node.node.id_ for node in result]
-        print(f"utterance ids: {utterance_ids}")
         utterances = self.db.as_employee(self.employee).get_utterances(utterance_ids)
         return utterances

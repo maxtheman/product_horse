@@ -4,9 +4,9 @@
 __all__ = ['secret', 'database_url', 'database', 'database_superuser', 'api_key', 'audio_editor', 'T', 'PermissionsLevel',
            'RegisterResponse', 'LoginResponse', 'schema', 'graphql_app', 'app', 'JwtPayload', 'create_jwt',
            'decode_jwt', 'Context', 'IsAuthenticated', 'FormError', 'FormErrors', 'handle_form_validation_errors',
-           'transcribe_and_save_file', 'Employee', 'User', 'Word', 'UtteranceSegment', 'Utterance', 'Clip', 'Video',
-           'Company', 'FileMetadata', 'Transcription', 'RegisterCompanySuccess', 'LoginSuccess', 'Query', 'Mutation',
-           'get_context']
+           'transcribe_and_save_file', 'Employee', 'User', 'Word', 'UtteranceSegmentInput', 'Utterance', 'Clip',
+           'Video', 'Company', 'FileMetadata', 'Transcription', 'RegisterCompanySuccess', 'LoginSuccess', 'Query',
+           'Mutation', 'get_context']
 
 # %% ../nbs/09_graphql.ipynb 3
 from typing import (
@@ -39,20 +39,20 @@ from product_horse.db import (
     User as DbUser,
     Video,
     Utterance,
-    UtteranceSegment,
     UnvalidatedUser,
     Word,
     Clip,
     FileMetadata,
     UnvalidatedFileMetadata,
     Transcription,
+    UtteranceSegment,
     UnvalidatedTranscription,
     UnvalidatedUtterance,
 )
 from datetime import datetime, timedelta
 
 from pydantic import ValidationError
-from .audio_video import AudioEditor
+from .audio_video import AudioEditor, create_video_from_utterances
 from .api import get_relevant_utterances_from_query
 
 from strawberry.permission import BasePermission
@@ -193,11 +193,12 @@ def handle_form_validation_errors(
 # %% ../nbs/09_graphql.ipynb 6
 @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=4, max=15))
 async def transcribe_and_save_file(
-    file_metadata: FileMetadata, signed_url: str, employee: Employee, db: SqlModelDatabase
+    file_metadata: FileMetadata,
+    signed_url: str,
+    employee: Employee,
+    db: SqlModelDatabase,
 ) -> Transcription:
-    transcription_result = await audio_editor.transcribe(
-        signed_url, employee
-    )
+    transcription_result = await audio_editor.transcribe(signed_url, employee)
     utterances: List[UnvalidatedUtterance] = transcription_result.utterances
 
     unvalidated_transcription = UnvalidatedTranscription(
@@ -233,17 +234,15 @@ class User:
 class Word:
     id: UUID
     text: str
-    start_time: float
-    end_time: float
+    start: float
+    end: float
 
 
-@strawberry.experimental.pydantic.type(UtteranceSegment)
-class UtteranceSegment:
-    id: UUID
-    start_word: Word
-    end_word: Word
-    text: str
-    words: list[Word]
+@strawberry.input
+class UtteranceSegmentInput:
+    utterance_id: str
+    start_word_id: str
+    end_word_id: str
 
 
 @strawberry.experimental.pydantic.type(Utterance)
@@ -269,6 +268,12 @@ class Video:
     id: UUID
     name: str
     clips: list[Clip]
+    title: str
+    file_path: str
+    resolution_x: int
+    resolution_y: int
+    render_status: str
+    fps: int
 
 
 @strawberry.experimental.pydantic.type(Company)
@@ -284,6 +289,7 @@ class FileMetadata:
     name: str
     file_path: str
 
+
 @strawberry.experimental.pydantic.type(Transcription)
 class Transcription:
     id: UUID
@@ -293,6 +299,7 @@ class Transcription:
     embedded: Optional[bool]
     utterances: list[Utterance]
     file_metadata: FileMetadata
+
 
 @strawberry.type
 class RegisterCompanySuccess:
@@ -326,27 +333,32 @@ class Query:
     @strawberry.field(permission_classes=[IsAuthenticated])
     def get_users(self, info: strawberry.Info) -> Sequence[User]:
         return database.as_employee(info.context.employee).get_all_users()  # type: ignore
-    
+
     @strawberry.field(permission_classes=[IsAuthenticated])
     def get_transcripts(self, info: strawberry.Info) -> Sequence[Transcription]:
-        transcripts = database.as_employee(info.context.employee).get_all_unique_transcriptions(mode="file_name")
-        return transcripts # type: ignore
+        transcripts = database.as_employee(
+            info.context.employee
+        ).get_all_unique_transcriptions(mode="file_name")
+        return transcripts  # type: ignore
 
     @strawberry.field(permission_classes=[IsAuthenticated])
     async def get_relevant_utterances(
         self, info: strawberry.Info, query: str, transcript_ids: Sequence[str]
     ) -> Sequence[Utterance]:
         transcript_uuids = [UUID(transcript_id) for transcript_id in transcript_ids]
-        transcripts = database.as_employee(info.context.employee).get_transcriptions(transcription_ids=transcript_uuids)
-        # possible that this won't work if there are too few utterances to query?
+        transcripts = database.as_employee(info.context.employee).get_transcriptions(
+            transcription_ids=transcript_uuids
+        )
+        # TODO: this won't work if there are too few utterances to query. Add a check.
+        # TODO: check the seconds buffer and N to return in the search_engine. Might be worth exposing those,
+        # and I am not sure what seconds buffer is anyway.
         utterances = await get_relevant_utterances_from_query(
             db=database,
             employee=info.context.employee,
             query=query,
             transcripts=transcripts,
         )
-        print(f"utterances: {utterances}")
-        return utterances # type: ignore
+        return utterances  # type: ignore
 
     @strawberry.field(permission_classes=[IsAuthenticated])
     def get_video(self, info: strawberry.Info, video_id: str) -> Video:
@@ -395,7 +407,9 @@ class Mutation:
         )
 
     @strawberry.mutation(permission_classes=[IsAuthenticated])
-    def save_user(self, info: strawberry.Info, name: str, external_id: Optional[str] = None) -> User:
+    def save_user(
+        self, info: strawberry.Info, name: str, external_id: Optional[str] = None
+    ) -> User:
         external_id = external_id if external_id is not None else ""
         user = UnvalidatedUser(
             name=name,
@@ -405,7 +419,7 @@ class Mutation:
         )
         return database.as_employee(info.context.employee).save_user(user)  # type: ignore
 
-    @strawberry.mutation
+    @strawberry.mutation(permission_classes=[IsAuthenticated])
     async def save_files_and_transcriptions(
         self,
         info: strawberry.Info,
@@ -413,8 +427,8 @@ class Mutation:
         files: Sequence[Upload],
     ) -> List[FileMetadata]:
         r2 = R2StorageClient(
-            # api_url="http://localhost:8787",
-            api_url="https://storage.producthorse.workers.dev/",
+            # api_url="https://storage.producthorse.workers.dev/",
+            api_url="http://localhost:8787",
             base_path=info.context.employee.company_id,
             jwt=info.context.jwt,
         )
@@ -436,10 +450,10 @@ class Mutation:
                 contents = await file.read()
                 path = r2.build_user_path(user, FilePathType.USER_ID_BASE_TEXT)
                 print("REMINDER to fix unreliable big uploads!!!!!!!!!!!!!!!!!!!!")
+                print(path)
                 file = await r2.create_file(
                     path, contents, name, authorized=True, mime_type=content_type
                 )
-                print(f"File: {file}")
                 unvalidated_metadata = UnvalidatedFileMetadata(
                     user_id=user.id,
                     file_name=name,
@@ -447,27 +461,77 @@ class Mutation:
                     created_by_id=info.context.employee.id,
                     company_id=info.context.employee.company_id,
                 )
-                file_metadata = database.as_employee(info.context.employee).save_file_metadata(
-                    unvalidated_metadata
-                )
+                file_metadata = database.as_employee(
+                    info.context.employee
+                ).save_file_metadata(unvalidated_metadata)
                 metadata.append(
-                    file_metadata # type: ignore
+                    file_metadata  # type: ignore
                 )
                 # fix name issue
                 signed_url = r2.get_signed_url(file_metadata.file_path)
-                print(f"Signed URL: {signed_url}")
-                transcription = await transcribe_and_save_file(file_metadata, signed_url, info.context.employee, database)
-                print(f"Transcription: {transcription}")
+                await transcribe_and_save_file(
+                    file_metadata, signed_url, info.context.employee, database
+                )
             except Exception as e:
                 print(e)
                 raise Exception(f"Failed to upload file {file}")
         return metadata
 
-    # @strawberry.mutation
-    # def create_video_from_utterances(
-    #     self, utterance_segments: Sequence[UtteranceSegment], user_id: UUID
-    # ) -> str:
-    #     raise NotImplementedError
+    @strawberry.mutation(permission_classes=[IsAuthenticated])
+    async def create_video_from_utterances(
+        self,
+        info: strawberry.Info,
+        utterance_segments: Sequence[UtteranceSegmentInput],
+        user_id: str,
+    ) -> Video:
+        r2 = R2StorageClient(
+            # api_url="https://storage.producthorse.workers.dev/",
+            api_url="http://localhost:8787",
+
+            base_path=info.context.employee.company_id,
+            jwt=info.context.jwt,
+        )
+        utterance_ids = [UUID(utterance_segment.utterance_id) for utterance_segment in utterance_segments]
+        utterances = database.as_employee(info.context.employee).get_utterances(utterance_ids)
+        utterance_segments_for_video = []
+        for utterance, utterance_segment in zip(utterances, utterance_segments):
+            start_word = next(word for word in utterance.words if word.id == UUID(utterance_segment.start_word_id))
+            end_word = next(word for word in utterance.words if word.id == UUID(utterance_segment.end_word_id))
+            segment_words = utterance.words[
+                utterance.words.index(start_word) : utterance.words.index(end_word) + 1
+            ]
+            utterance_segments_for_video.append( # type: ignore
+                UtteranceSegment(
+                    id=utterance.id,
+                    transcription_id=utterance.transcription_id,
+                    transcription=utterance.transcription,
+                    words=segment_words,
+                    segment_start_word=start_word,
+                    segment_end_word=end_word,
+                    confidence=utterance.confidence,
+                    company_id=utterance.company_id,
+                    created_by_id=utterance.created_by_id,
+                    start=utterance.start,
+                    end=utterance.end,
+                )
+            )
+        # utterance_segments = [
+        #     UtteranceSegment(**utterance_segment)
+        #     for utterance_segment in utterance_segments
+        # ]
+        user = database.as_employee(info.context.employee).get_user(user_id)
+        if user is None:
+            raise Exception("User not found")
+        output_path = r2.build_user_path(user, FilePathType.USER_ID_BASE_VIDEO)
+        video = await create_video_from_utterances(
+            database,
+            r2,
+            info.context.employee,
+            user,
+            utterance_segments_for_video,
+            output_path,  # type: ignore
+        )
+        return video  # type: ignore
 
 # %% ../nbs/09_graphql.ipynb 8
 async def get_context() -> Context:

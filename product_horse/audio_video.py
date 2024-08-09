@@ -2,7 +2,7 @@
 
 # %% auto 0
 __all__ = ['MoviePyClipType', 'AudioEditor', 'save_mp4_animation_to_file', 'put_words_over_video_subset', 'write_video',
-           'render_clip', 'render_clips', 'prepare_clips_for_video_rendering', 'create_video_from_clips',
+           'render_clip', 'render_clips', 'prepare_clip_data_for_video_rendering', 'create_video_from_clips',
            'create_video_from_utterances']
 
 # %% ../nbs/03_audio_video.ipynb 4
@@ -42,17 +42,19 @@ from product_horse.db import (
 )
 from .filesystems import FilePathType, AbstractFileSystem
 from rich.console import Console
+import io
+import tempfile
+
 
 # For experimental viz replacement
 # from multiprocess import Pool
-# import io
 # import cairo
 # import subprocess as sp
 # from functools import lru_cache
 
 load_dotenv()
 
-# %% ../nbs/03_audio_video.ipynb 7
+# %% ../nbs/03_audio_video.ipynb 8
 from product_horse.db import (
     SqlModelDatabase,
     UnvalidatedWord,
@@ -64,6 +66,7 @@ from product_horse.db import (
     PermissionLevel,
 )
 
+# %% ../nbs/03_audio_video.ipynb 9
 class AudioEditor:
     api_key: str | None = None
 
@@ -162,7 +165,7 @@ class AudioEditor:
         # add later
         pass
 
-# %% ../nbs/03_audio_video.ipynb 14
+# %% ../nbs/03_audio_video.ipynb 16
 def save_mp4_animation_to_file(
     audio_path: str,
     output_path: str,
@@ -203,7 +206,7 @@ def save_mp4_animation_to_file(
         size=size,
     )
 
-# %% ../nbs/03_audio_video.ipynb 16
+# %% ../nbs/03_audio_video.ipynb 18
 from collections import OrderedDict
 
 MoviePyClipType = Union[VideoFileClip, AudioFileClip, CompositeVideoClip]
@@ -247,7 +250,7 @@ def _get_audio_file_properties(file_path: str) -> tuple[int, None, float]:
     clip.close()
     return clip.fps, None, cast(float, clip.duration)  # type: ignore
 
-# %% ../nbs/03_audio_video.ipynb 18
+# %% ../nbs/03_audio_video.ipynb 20
 def put_words_over_video_subset(
     file_path: str,
     words: Sequence[Word],
@@ -348,7 +351,7 @@ def put_words_over_video_subset(
         final_clip = final_clip.set_duration(video_clip.duration)  # type: ignore
     return final_clip
 
-# %% ../nbs/03_audio_video.ipynb 19
+# %% ../nbs/03_audio_video.ipynb 21
 def write_video(
     video_path: str, video_clip: VideoFileClip | VideoClip | CompositeVideoClip
 ):
@@ -367,7 +370,7 @@ def write_video(
         console.print(e, style="red")
         raise e
 
-# %% ../nbs/03_audio_video.ipynb 22
+# %% ../nbs/03_audio_video.ipynb 24
 def render_clip(
     clip: Clip,
     temp_directory: str,
@@ -447,7 +450,7 @@ def render_clip(
     print(f"Clip fps: {word_clip.fps}")  # type: ignore
     return word_clip
 
-# %% ../nbs/03_audio_video.ipynb 23
+# %% ../nbs/03_audio_video.ipynb 25
 def render_clips(
     clip_list: Sequence[Clip],
     temp_directory: str,
@@ -480,8 +483,8 @@ def render_clips(
         final_clips.append(final_clip)
     return final_clips
 
-# %% ../nbs/03_audio_video.ipynb 26
-def prepare_clips_for_video_rendering(
+# %% ../nbs/03_audio_video.ipynb 28
+def prepare_clip_data_for_video_rendering(
     utterances: Sequence[UtteranceSegment],
     transcript_metadatas: Sequence[FileMetadata],
     creator: Employee,
@@ -565,10 +568,11 @@ def prepare_clips_for_video_rendering(
         clip.fps = max_fps
     return clips_for_video
 
-# %% ../nbs/03_audio_video.ipynb 28
+# %% ../nbs/03_audio_video.ipynb 30
 def create_video_from_clips(
     clips: Sequence[Clip] | List[VideoClip | CompositeVideoClip],
     video: Video,
+    temp_file_path: str,
     max_fps: int,
     target_resolution: Tuple[int, int],
 ):
@@ -581,17 +585,18 @@ def create_video_from_clips(
     else:
         video_clips = clips
     final_video = concatenate_videoclips(video_clips, method="compose")
-    if video.file_path is None:
-        raise ValueError("Video file path is None")
     if video.render_status == RenderStatus.complete:
         raise ValueError("Video is already complete")
     if video.render_status == RenderStatus.failed:
         raise ValueError("Video failed to render")
+    video_buffer = io.BytesIO()
     try:
         with final_video as video_render:
             print(f"Writing video to {video.file_path}")
-            write_video(video.file_path, video_render)
-        print(f"Video file {video.file_path} exists, {type(video)}")
+            write_video(temp_file_path, video_render)
+
+        with open(temp_file_path, "rb") as f:
+            video_buffer = io.BytesIO(f.read())
         video.resolution_x = target_resolution[1]
         video.resolution_y = target_resolution[0]
         video.fps = max_fps
@@ -599,10 +604,10 @@ def create_video_from_clips(
     except Exception as e:
         video.render_status = RenderStatus.failed
         raise e
-    return video
+    return video_buffer
 
-# %% ../nbs/03_audio_video.ipynb 31
-def create_video_from_utterances(
+# %% ../nbs/03_audio_video.ipynb 33
+async def create_video_from_utterances(
     db: AbstractDatabase[DBType],
     file_system: AbstractFileSystem,
     employee: Employee,
@@ -615,7 +620,7 @@ def create_video_from_utterances(
         employee
     ).get_file_metadata_from_list_of_transcript_ids(transcript_ids)
 
-    raw_clips = prepare_clips_for_video_rendering(
+    raw_clips = prepare_clip_data_for_video_rendering(
         utterance_segments, transcript_metadatas, employee
     )
 
@@ -637,10 +642,22 @@ def create_video_from_utterances(
         raise ValueError("Video fps, resolution_x, and resolution_y must be set")
 
     with file_system.temporary_user_directory(user) as temp_directory:
-        clips_to_render = render_clips(saved_clips, temp_directory)
-        final_video = create_video_from_clips(
-            clips_to_render, video, video.fps, (video.resolution_x, video.resolution_y)
+        clips_to_render = render_clips(
+            saved_clips,
+            temp_directory,
         )
-        video_final = db.as_employee(employee).save_video(final_video)
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as temp_file:
+            temp_file_path = temp_file.name
+            video_buffer = create_video_from_clips(
+                clips_to_render, video, temp_file_path, video.fps, (video.resolution_x, video.resolution_y)
+            )
+            final_video = await file_system.create_file(
+                output_path,
+                video_buffer,
+                name=f"{video.id}.mp4",
+                authorized=True,
+            )
+        video.file_path = final_video.uri
+        video_final = db.as_employee(employee).save_video(video)
 
     return video_final

@@ -1333,6 +1333,7 @@ class SqlModelDatabase(AbstractDatabase["SqlModelDatabase"]):
         return session.exec(
             select(Utterance)
             .where(col(Utterance.id).in_(utterance_ids))
+            .options(selectinload(Utterance.transcription)) # type: ignore - selectinload type is weird
             .options(selectinload(Utterance.words))  # type: ignore - selectinload type is weird
         ).all()
 
