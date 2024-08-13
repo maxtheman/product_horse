@@ -151,10 +151,12 @@ class User(UnvalidatedUser, table=True):
         back_populates="user", sa_relationship_kwargs={"cascade": "all, delete-orphan"}
     )
 
+
 class FileType(str, Enum):
     video = "video"
     audio = "audio"
     other = "other"
+
 
 class UnvalidatedFileMetadata(OrgBoundModel):
     user_id: UUID = Field(default=None, foreign_key="user.id")
@@ -164,7 +166,7 @@ class UnvalidatedFileMetadata(OrgBoundModel):
     resolution_x: Optional[int] = Field(default=None)
     resolution_y: Optional[int] = Field(default=None)
     duration: Optional[float] = Field(default=None)
-    file_type: FileType = Field(default=FileType.video) 
+    file_type: FileType = Field(default=None)
 
 
 class FileMetadata(UnvalidatedFileMetadata, table=True):
@@ -177,11 +179,6 @@ class FileMetadata(UnvalidatedFileMetadata, table=True):
         sa_relationship_kwargs={"cascade": "all, delete-orphan"},
     )
     user: "User" = Relationship(back_populates="file_metadata")
-    frame_rate: Optional[int] = Field(default=None)
-    resolution_x: Optional[int] = Field(default=None)
-    resolution_y: Optional[int] = Field(default=None)
-    duration: Optional[float] = Field(default=None)
-    file_type: FileType = Field(default=FileType.video)
 
 
 class UnvalidatedWord(OrgBoundModel):
@@ -413,8 +410,10 @@ class Clip(UnvalidatedClip, table=True):
         """
         return self.duration_ms
 
+
 @dataclass
 class VideoMetrics:
+    max_fps: int
     total_duration: float
     max_resolution_x: int
     max_resolution_y: int
@@ -925,6 +924,19 @@ class SqlModelDatabase(AbstractDatabase["SqlModelDatabase"]):
                 "clip",
             ]:
                 self._migrate_table(table, org_bound_fields)
+
+            # migrate file_metadata table
+            self._migrate_table(
+                "file_metadata",
+                [
+                    ("frame_rate", "INTEGER"),
+                    ("resolution_x", "INTEGER"),
+                    ("resolution_y", "INTEGER"),
+                    ("duration", "DOUBLE PRECISION"),
+                    ("file_type", "VARCHAR(20)"),
+                    *org_bound_fields,  # Include OrgBoundModel fields
+                ],
+            )
 
             # Migrate video table
             self._migrate_table(
@@ -1554,6 +1566,7 @@ class SqlModelDatabase(AbstractDatabase["SqlModelDatabase"]):
     ) -> VideoMetrics:
         """
         Prepares clips and video metrics from file metadata.
+        Returns one clip per file metadata
         """
         file_ids = [file_metadata.id for file_metadata in file_metadatas]
 
@@ -1561,6 +1574,7 @@ class SqlModelDatabase(AbstractDatabase["SqlModelDatabase"]):
         aggregate_query = text("""
             SELECT 
                 SUM(duration) as total_duration,
+                MAX(frame_rate) as max_frame_rate,
                 MAX(resolution_x) as max_resolution_x,
                 MAX(resolution_y) as max_resolution_y
             FROM 
@@ -1589,6 +1603,12 @@ class SqlModelDatabase(AbstractDatabase["SqlModelDatabase"]):
             ).all()
             words = [word for utterance in utterances for word in utterance.words]
 
+            video_type = (
+                VideoType(file_metadata.file_type)
+                if file_metadata.file_type
+                else VideoType.video
+            )
+
             unvalidated_clip = CreateClip(
                 fps=file_metadata.frame_rate or 30,
                 resolution_x=file_metadata.resolution_x
@@ -1598,7 +1618,7 @@ class SqlModelDatabase(AbstractDatabase["SqlModelDatabase"]):
                 metadata_to_render=file_metadata.user.name
                 if file_metadata.user
                 else None,
-                video_type=VideoType(file_metadata.file_type),
+                video_type=video_type,
                 file_path=file_metadata.file_path,
                 words=words,
                 hide_metadata=hide_metadata,
@@ -1609,6 +1629,7 @@ class SqlModelDatabase(AbstractDatabase["SqlModelDatabase"]):
 
         return VideoMetrics(
             total_duration=aggregate_result.total_duration,
+            max_fps=aggregate_result.max_frame_rate,
             max_resolution_x=aggregate_result.max_resolution_x,
             max_resolution_y=aggregate_result.max_resolution_y,
             clips=clips,
