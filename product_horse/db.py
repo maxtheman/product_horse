@@ -3,12 +3,13 @@
 # %% auto 0
 __all__ = ['STRINGS_TO_SANITIZE', 'ValidString', 'ValidPath', 'T', 'P', 'DBType', 'TModelOut', 'validate_file_path',
            'sanitize_strings', 'VideoVisibility', 'PermissionLevel', 'UnvalidatedCompany', 'Company',
-           'UnvalidatedEmployee', 'CreateEmployee', 'Employee', 'OrgBoundModel', 'UnvalidatedUser', 'User',
+           'UnvalidatedEmployee', 'CreateEmployee', 'Employee', 'OrgBoundModel', 'UnvalidatedUser', 'User', 'FileType',
            'UnvalidatedFileMetadata', 'FileMetadata', 'UnvalidatedWord', 'WordClipLink', 'Word', 'UtteranceBase',
            'UtteranceSegment', 'UnvalidatedUtterance', 'Utterance', 'UnvalidatedTranscription', 'CreateTranscription',
            'Transcription', 'UnvalidatedSchema', 'Schema', 'UnvalidatedVideo', 'RenderStatus', 'Video', 'VideoType',
-           'UnvalidatedClip', 'CreateClip', 'Clip', 'PermissionDecorator', 'DatabaseProtocol', 'get_current_level',
-           'permission_required', 'read', 'write', 'admin', 'public', 'AbstractDatabase', 'SqlModelDatabase']
+           'UnvalidatedClip', 'CreateClip', 'Clip', 'VideoMetrics', 'PermissionDecorator', 'DatabaseProtocol',
+           'get_current_level', 'permission_required', 'read', 'write', 'admin', 'public', 'AbstractDatabase',
+           'SqlModelDatabase']
 
 # %% ../nbs/07_db.ipynb 3
 from typing import (
@@ -28,6 +29,7 @@ from typing import (
     Concatenate,
     Generic,
 )
+from dataclasses import dataclass
 from functools import wraps
 from enum import Enum, IntEnum
 from typing_extensions import Annotated
@@ -36,9 +38,18 @@ from sqlalchemy import BigInteger, text, LargeBinary
 from sqlalchemy.exc import PendingRollbackError
 from sqlalchemy.orm import selectinload, joinedload
 from psycopg2.errors import InsufficientPrivilege
-from pydantic import field_validator, ValidationInfo, ValidationError
+from pydantic import field_validator
 from pydantic.functional_validators import BeforeValidator
-from sqlmodel import Field, Session, SQLModel, create_engine, select, col, Relationship
+from sqlmodel import (
+    Field,
+    Session,
+    SQLModel,
+    create_engine,
+    select,
+    col,
+    Relationship,
+    func,
+)
 from datetime import datetime
 from uuid import uuid4, UUID
 from sqlalchemy import Column, JSON, case
@@ -140,15 +151,24 @@ class User(UnvalidatedUser, table=True):
         back_populates="user", sa_relationship_kwargs={"cascade": "all, delete-orphan"}
     )
 
+class FileType(str, Enum):
+    video = "video"
+    audio = "audio"
+    other = "other"
 
 class UnvalidatedFileMetadata(OrgBoundModel):
     user_id: UUID = Field(default=None, foreign_key="user.id")
     file_name: ValidString = Field(default=None)
     file_path: ValidString = Field(default=None)
+    frame_rate: Optional[int] = Field(default=None)
+    resolution_x: Optional[int] = Field(default=None)
+    resolution_y: Optional[int] = Field(default=None)
+    duration: Optional[float] = Field(default=None)
+    file_type: FileType = Field(default=FileType.video) 
 
 
 class FileMetadata(UnvalidatedFileMetadata, table=True):
-    __tablename__ = "file_metadata"
+    __tablename__ = "file_metadata"  # type: ignore
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     created_at: datetime = Field(default=datetime.utcnow(), nullable=False)
     updated_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
@@ -157,6 +177,11 @@ class FileMetadata(UnvalidatedFileMetadata, table=True):
         sa_relationship_kwargs={"cascade": "all, delete-orphan"},
     )
     user: "User" = Relationship(back_populates="file_metadata")
+    frame_rate: Optional[int] = Field(default=None)
+    resolution_x: Optional[int] = Field(default=None)
+    resolution_y: Optional[int] = Field(default=None)
+    duration: Optional[float] = Field(default=None)
+    file_type: FileType = Field(default=FileType.video)
 
 
 class UnvalidatedWord(OrgBoundModel):
@@ -303,6 +328,7 @@ class Video(UnvalidatedVideo, table=True):
 class VideoType(str, Enum):
     video = "video"
     audio = "audio"
+    other = "other"
 
 
 class UnvalidatedClip(OrgBoundModel):
@@ -310,6 +336,7 @@ class UnvalidatedClip(OrgBoundModel):
     Clip of a video or audio file.
     Only add the relevant words you want to include.
     """
+
     fps: int
     resolution_x: int
     resolution_y: int
@@ -386,6 +413,13 @@ class Clip(UnvalidatedClip, table=True):
         """
         return self.duration_ms
 
+@dataclass
+class VideoMetrics:
+    total_duration: float
+    max_resolution_x: int
+    max_resolution_y: int
+    clips: List[CreateClip]
+
 # %% ../nbs/07_db.ipynb 10
 T = TypeVar("T")
 P = ParamSpec("P")
@@ -423,14 +457,13 @@ def permission_required(level: PermissionLevel):
     ) -> Callable[Concatenate[DBType, P], T]:
         """Decorator to require a certain permission level for a function. Unsets employee at the end of the function."""
 
-
-
         @wraps(func)
         def wrapper(self: DBType, *args: P.args, **kwargs: P.kwargs) -> T:
             def clear_all_vars(self: DBType):
                 new_session = self.get_session_for_employee(public=True)
                 self.permissions_clear_session_variables(new_session)
                 new_session.close()
+
             if level == PermissionLevel.PUBLIC:
                 with self.get_session_for_employee(public=True) as session:
                     return func(self, session, *args, **kwargs)
@@ -455,7 +488,9 @@ def permission_required(level: PermissionLevel):
                 except InsufficientPrivilege:
                     session.rollback()
                     clear_all_vars(self)
-                    raise PermissionError("Employee does not have sufficient permissions")
+                    raise PermissionError(
+                        "Employee does not have sufficient permissions"
+                    )
                 except Exception as error:
                     print(error)
                     raise error
@@ -468,8 +503,6 @@ def permission_required(level: PermissionLevel):
                     except InsufficientPrivilege:
                         clear_all_vars(self)
                     self.employee = None
-
-
 
         wrapper._permission_level = level  # type: ignore - dynamic assignment that I'm not worrying about.
         return wrapper
@@ -826,6 +859,23 @@ class AbstractDatabase(ABC, DatabaseProtocol, Generic[DBType]):
         """Retrieves a video from the database."""
         raise NotImplementedError
 
+    @write
+    @abstractmethod
+    def prepare_clips_from_metadata(
+        self,
+        session: Session,
+        file_metadatas: Sequence[FileMetadata],
+        creator: Employee,
+        hide_metadata: bool = False,
+    ) -> VideoMetrics:
+        """
+        Prepares and saves clips from file metadata.
+
+        Returns:
+        VideoMetrics containing aggregate video information and saved clips.
+        """
+        raise NotImplementedError
+
 # %% ../nbs/07_db.ipynb 14
 TModelOut = TypeVar("TModelOut", bound=SQLModel)
 
@@ -1001,7 +1051,9 @@ class SqlModelDatabase(AbstractDatabase["SqlModelDatabase"]):
         """Same as set_session_variables, but without any kind of permissions. Use at your own risk."""
         session.execute(text(f"SET app.current_company_id = '{employee.company_id}'"))
         session.execute(
-            text(f"SET app.current_permission_level = '{employee.permission_level.name}'")
+            text(
+                f"SET app.current_permission_level = '{employee.permission_level.name}'"
+            )
         )
         session.execute(text(f"SET app.current_employee_id = '{employee.id}'"))
         session.commit()
@@ -1333,7 +1385,7 @@ class SqlModelDatabase(AbstractDatabase["SqlModelDatabase"]):
         return session.exec(
             select(Utterance)
             .where(col(Utterance.id).in_(utterance_ids))
-            .options(selectinload(Utterance.transcription)) # type: ignore - selectinload type is weird
+            .options(selectinload(Utterance.transcription))  # type: ignore - selectinload type is weird
             .options(selectinload(Utterance.words))  # type: ignore - selectinload type is weird
         ).all()
 
@@ -1491,6 +1543,76 @@ class SqlModelDatabase(AbstractDatabase["SqlModelDatabase"]):
         return session.exec(
             select(Video).options(selectinload(Video.clips)).where(Video.id == video_id)  # type: ignore - selectinload type is weird
         ).first()
+
+    @read
+    def prepare_clips_from_metadata(
+        self,
+        session: Session,
+        file_metadatas: Sequence[FileMetadata],
+        creator: Employee,
+        hide_metadata: bool = False,
+    ) -> VideoMetrics:
+        """
+        Prepares clips and video metrics from file metadata.
+        """
+        file_ids = [file_metadata.id for file_metadata in file_metadatas]
+
+        # Query 1: Get aggregated data using raw SQL
+        aggregate_query = text("""
+            SELECT 
+                SUM(duration) as total_duration,
+                MAX(resolution_x) as max_resolution_x,
+                MAX(resolution_y) as max_resolution_y
+            FROM 
+                file_metadata
+            WHERE 
+                id = ANY(:file_ids)
+        """)
+        aggregate_result = session.execute(
+            aggregate_query, {"file_ids": file_ids}
+        ).fetchone()
+
+        file_metadata_query = select(FileMetadata).where(
+            col(FileMetadata.id).in_(file_ids)
+        )
+        file_metadata_results = session.exec(file_metadata_query).all()
+
+        clips: list[CreateClip] = []
+        if aggregate_result is None:
+            raise ValueError("Aggregate result is None")
+        for file_metadata in file_metadata_results:
+            # Fetch words for each file_metadata
+            utterances = session.exec(
+                select(Utterance).where(
+                    Utterance.transcription_id == file_metadata.transcription.id
+                )
+            ).all()
+            words = [word for utterance in utterances for word in utterance.words]
+
+            unvalidated_clip = CreateClip(
+                fps=file_metadata.frame_rate or 30,
+                resolution_x=file_metadata.resolution_x
+                or aggregate_result.max_resolution_x,
+                resolution_y=file_metadata.resolution_y
+                or aggregate_result.max_resolution_y,
+                metadata_to_render=file_metadata.user.name
+                if file_metadata.user
+                else None,
+                video_type=VideoType(file_metadata.file_type),
+                file_path=file_metadata.file_path,
+                words=words,
+                hide_metadata=hide_metadata,
+                company_id=creator.company_id,
+                created_by_id=creator.id,
+            )
+            clips.append(unvalidated_clip)
+
+        return VideoMetrics(
+            total_duration=aggregate_result.total_duration,
+            max_resolution_x=aggregate_result.max_resolution_x,
+            max_resolution_y=aggregate_result.max_resolution_y,
+            clips=clips,
+        )
 
     @property
     def operations(self) -> "Operations":
