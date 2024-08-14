@@ -38,7 +38,7 @@ from product_horse.db import (
     DBType,
     FileType,
 )
-from .filesystems import FilePathType, AbstractFileSystem
+from .filesystems import FilePathType, AbstractFileSystem, LocalFileSystem
 from rich.console import Console
 import io
 import tempfile
@@ -328,14 +328,24 @@ def write_video(
 def render_clip(
     clip: Clip,
     temp_directory: str,
+    local_path_for_clip: str,
 ) -> CompositeVideoClip | VideoClip:
     """Renders a clip from utterances for a given transcript.
     If not all words are used, only applicable words should be added to UtteranceSegment, and custom_start/custom_end should be equal to the start/end of the first/last words.
     If all words are used, start/end should be equal to the start/end of the entire video."""
+    file_path_for_clip = local_path_for_clip
+    mp4_animation_path = temp_directory + f"/{clip.id}.mp4"
+    # check that you can write to the temp directory
+    try:
+        with open(temp_directory + "/test.txt", "w") as f:
+            f.write("test")
+        if not os.path.exists(file_path_for_clip):
+            raise ValueError(f"File {file_path_for_clip} does not exist")
+    except Exception as e:
+        print(e)
+        raise e
     if len(clip.words) == 0:
         raise ValueError("No words to render")
-    if clip.file_path is None:
-        raise ValueError("No file path to render")
     first_word = clip.words[0]
     last_word = clip.words[-1]
     if first_word.start != clip.start_ms:
@@ -356,23 +366,27 @@ def render_clip(
             clip.duration < 900
         ):  # if you remove this you will get failures with exit status 254 from ffmeg:
             raise ValueError(
-                f"Duration of {clip.file_path} is too short to render a video"
+                f"Duration of {file_path_for_clip} is too short to render a video"
             )
-        working_clip: AudioFileClip = AudioFileClip(clip.file_path).subclip(
-            safe_start, safe_end
-        )  # type: ignore
+        try:
+            working_clip: AudioFileClip = AudioFileClip(file_path_for_clip).subclip(
+                safe_start, safe_end
+            )  # type: ignore
+        except Exception as e:
+            console.print(e, style="red")
+            raise e
         working_clip.write_audiofile(temp_directory + f"/{clip.id}.mp3")
         working_clip.close()
         save_mp4_animation_to_file(
-            audio_path=temp_directory + f"/{clip.id}.mp3",
-            output_path=temp_directory + f"/{clip.id}.mp4",
+            audio_path=file_path_for_clip,
+            output_path=mp4_animation_path,
             tmp_directory=temp_directory,
             duration=clip.duration,
             rate=clip.fps,
             size=size,
         )
         word_clip = put_words_over_video_subset(
-            file_path=temp_directory + f"/{clip.id}.mp4",
+            file_path=mp4_animation_path,
             words=clip.words,
             target_resolution=size,
             start=safe_start,
@@ -381,7 +395,7 @@ def render_clip(
         )
     else:
         word_clip = put_words_over_video_subset(
-            file_path=clip.file_path,
+            file_path=file_path_for_clip,
             words=clip.words,
             target_resolution=size,
             start=safe_start,
@@ -400,41 +414,56 @@ def render_clip(
     except Exception as e:
         console.print(e, style="red")
         raise e
-    print(f"Clip duration: {word_clip.duration}")  # type: ignore
-    print(f"Clip fps: {word_clip.fps}")  # type: ignore
     return word_clip
 
 # %% ../nbs/03_audio_video.ipynb 23
-def render_clips(
+async def render_clips(
     clip_list: Sequence[Clip],
-    temp_directory: str,
+    temp_server_directory: str,
+    temp_server_file_system: AbstractFileSystem,
+    file_system_for_getting_data: AbstractFileSystem
 ) -> List[CompositeVideoClip | VideoClip]:
     """Renders clips, conditionally with metadata.
     Clips must be saved to DB before being passed to this function."""
     final_clips: List[CompositeVideoClip | VideoClip] = []
     for clip in clip_list:
-        final_clip = render_clip(
-            clip,
-            temp_directory,
-        )
-        if clip.hide_metadata:
-            pass
-        else:
-            metadata_banner = TextClip(
-                clip.metadata_to_render,
-                fontsize=48,
-                color="white",
-                stroke_color="black",
-                font="Helvetica",
-                stroke_width=2,
+        if clip.file_path is None:
+            raise ValueError("No file path to render")
+        
+        with file_system_for_getting_data.file_stream(clip.file_path) as source_stream:
+            temp_file_path = f"{temp_server_directory}/{clip.id}.mp4"
+            with temp_server_file_system.file_stream(temp_file_path, mode="wb") as destination_stream:
+                chunk_size = 8192  # 8KB chunks, adjust as needed
+                while True:
+                    chunk = source_stream.read(chunk_size)
+                    if not chunk:
+                        break
+                    destination_stream.write(chunk)
+        
+            final_clip = render_clip(
+                clip,
+                temp_server_directory,
+                local_path_for_clip=temp_file_path,
             )
-            metadata_banner = metadata_banner.set_position(
-                (0.05, 0.05),
-                relative=True,
-            ).set_duration(clip.duration / 1000)  # type: ignore - moviepy types are crappy
-            final_clip = CompositeVideoClip([final_clip, metadata_banner])
-            final_clip.fps = clip.fps
-        final_clips.append(final_clip)
+            final_clips.append(final_clip)
+            if clip.hide_metadata:
+                pass
+            else:
+                metadata_banner = TextClip(
+                    clip.metadata_to_render,
+                    fontsize=48,
+                    color="white",
+                    stroke_color="black",
+                    font="Helvetica",
+                    stroke_width=2,
+                )
+                metadata_banner = metadata_banner.set_position(
+                    (0.05, 0.05),
+                    relative=True,
+                ).set_duration(clip.duration / 1000)  # type: ignore - moviepy types are crappy
+                final_clip = CompositeVideoClip([final_clip, metadata_banner])
+                final_clip.fps = clip.fps
+            final_clips.append(final_clip)
     return final_clips
 
 # %% ../nbs/03_audio_video.ipynb 27
@@ -503,7 +532,8 @@ def filter_clips_by_utterance_segments(
 # %% ../nbs/03_audio_video.ipynb 33
 async def create_video_from_utterances(
     db: AbstractDatabase[DBType],
-    file_system: AbstractFileSystem,
+    incoming_file_system: AbstractFileSystem,
+    local_file_system: LocalFileSystem,
     employee: Employee,
     user: User,
     utterance_segments: List[UtteranceSegment],
@@ -537,10 +567,12 @@ async def create_video_from_utterances(
     if video.fps is None or video.resolution_x is None or video.resolution_y is None:
         raise ValueError("Video fps, resolution_x, and resolution_y must be set")
 
-    with file_system.temporary_user_directory(user) as temp_directory:
-        clips_to_render = render_clips(
+    with local_file_system.temporary_user_directory(user) as temp_directory:
+        clips_to_render = await render_clips(
             saved_clips,
             temp_directory,
+            file_system_for_getting_data=incoming_file_system,
+            temp_server_file_system=local_file_system,
         )
         with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as temp_file:
             temp_file_path = temp_file.name
@@ -551,7 +583,7 @@ async def create_video_from_utterances(
                 video.fps,
                 (video.resolution_x, video.resolution_y),
             )
-            final_video = await file_system.create_file(
+            final_video = await local_file_system.create_file(
                 output_path,
                 video_buffer,
                 name=f"{video.id}.mp4",

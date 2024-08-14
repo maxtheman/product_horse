@@ -52,6 +52,7 @@ from sqlmodel import (
 )
 from datetime import datetime
 from uuid import uuid4, UUID
+from collections import OrderedDict
 from sqlalchemy import Column, JSON, case
 from passlib.hash import pbkdf2_sha256
 import warnings
@@ -769,7 +770,10 @@ class AbstractDatabase(ABC, DatabaseProtocol, Generic[DBType]):
     @read
     @abstractmethod
     def get_utterances(
-        self, session: Session, utterance_ids: List[UUID]
+        self,
+        session: Session,
+        utterance_ids: List[UUID],
+        word_ids: Optional[List[UUID] | List[str]] = None,
     ) -> Sequence[Utterance]:
         """Retrieves utterances from a list of utterance IDs."""
         raise NotImplementedError
@@ -856,6 +860,12 @@ class AbstractDatabase(ABC, DatabaseProtocol, Generic[DBType]):
         self, session: Session, video_id: Union[str, UUID]
     ) -> Optional[Video]:
         """Retrieves a video from the database."""
+        raise NotImplementedError
+    
+    @read
+    @abstractmethod
+    def get_all_videos(self, session: Session) -> Sequence[Video]:
+        """Retrieves all videos from the database."""
         raise NotImplementedError
 
     @write
@@ -1392,14 +1402,113 @@ class SqlModelDatabase(AbstractDatabase["SqlModelDatabase"]):
 
     @read
     def get_utterances(
-        self, session: Session, utterance_ids: List[UUID] | List[str]
+        self,
+        session: Session,
+        utterance_ids: List[UUID] | List[str],
+        word_ids: Optional[List[UUID] | List[str]] = None,
     ) -> Sequence[Utterance]:
-        return session.exec(
-            select(Utterance)
-            .where(col(Utterance.id).in_(utterance_ids))
-            .options(selectinload(Utterance.transcription))  # type: ignore - selectinload type is weird
-            .options(selectinload(Utterance.words))  # type: ignore - selectinload type is weird
-        ).all()
+        utterance_ids_str = ", ".join(f"'{str(id)}'" for id in utterance_ids)
+        if word_ids:
+            word_ids_str = ", ".join(f"'{str(id)}'" for id in word_ids)
+            query = f"""
+            SELECT utterance.*,
+                word.id as word_id,
+                word.confidence as word_confidence,
+                word.end as word_end,
+                word.speaker as word_speaker,
+                word.start as word_start,
+                word.text as word_text,
+                word.company_id as word_company_id,
+                word.created_by_id as word_created_by_id,
+                transcription.id as transcription_id,
+                transcription.file_id as transcription_file_id,
+                transcription.created_at as transcription_created_at,
+                transcription.updated_at as transcription_updated_at,
+                transcription.embedded as transcription_embedded,
+                transcription.text as transcription_text,
+                transcription.company_id as transcription_company_id,
+                transcription.created_by_id as transcription_created_by_id
+            FROM utterance
+            LEFT JOIN word ON utterance.id = word.utterance_id
+            LEFT JOIN transcription ON utterance.transcription_id = transcription.id
+            WHERE utterance.id IN ({utterance_ids_str})
+            AND (word.id IN ({word_ids_str}))
+            ORDER BY utterance.start, word.start
+            """
+        else:
+            query = f"""
+            SELECT utterance.*,
+                word.id as word_id,
+                word.confidence as word_confidence,
+                word.end as word_end,
+                word.speaker as word_speaker,
+                word.start as word_start,
+                word.text as word_text,
+                word.company_id as word_company_id,
+                word.created_by_id as word_created_by_id,
+                transcription.id as transcription_id,
+                transcription.file_id as transcription_file_id,
+                transcription.created_at as transcription_created_at,
+                transcription.updated_at as transcription_updated_at,
+                transcription.embedded as transcription_embedded,
+                transcription.text as transcription_text,
+                transcription.company_id as transcription_company_id,
+                transcription.created_by_id as transcription_created_by_id
+            FROM utterance
+            LEFT JOIN word ON utterance.id = word.utterance_id
+            LEFT JOIN transcription ON utterance.transcription_id = transcription.id
+            WHERE utterance.id IN ({utterance_ids_str})
+            ORDER BY utterance.start, word.start
+            """
+
+        result = session.execute(text(query)).fetchall()
+
+        utterances_dict: OrderedDict[UUID, Utterance] = OrderedDict()
+        for row in result:
+            utterance_id = row.id
+            if utterance_id not in utterances_dict:
+                utterances_dict[utterance_id] = Utterance(
+                    id=utterance_id,
+                    confidence=row.confidence,
+                    end=row.end,
+                    speaker=row.speaker,
+                    start=row.start,
+                    text=row.text,
+                    company_id=row.company_id,
+                    created_by_id=row.created_by_id,
+                    transcription_id=row.transcription_id,
+                    words=[],
+                )
+            
+            if row.word_id:  # Check if word exists (not NULL)
+                word = Word(
+                    id=row.word_id,
+                    confidence=row.word_confidence,
+                    end=row.word_end,
+                    speaker=row.word_speaker,
+                    start=row.word_start,
+                    text=row.word_text,
+                    company_id=row.word_company_id,
+                    created_by_id=row.word_created_by_id,
+                    utterance_id=utterance_id,
+                )
+                utterances_dict[utterance_id].words.append(word)
+            if row.transcription_id:
+                transcription = Transcription(
+                    id=row.transcription_id,
+                    file_id=row.transcription_file_id,
+                    created_at=row.transcription_created_at,
+                    updated_at=row.transcription_updated_at,
+                    embedded=row.transcription_embedded,
+                    text=row.transcription_text,
+                    company_id=row.transcription_company_id,
+                    created_by_id=row.transcription_created_by_id,
+                )
+                utterances_dict[utterance_id].transcription = transcription
+
+        de_duped_utterances = list(utterances_dict.values())
+
+        return de_duped_utterances
 
     @read
     def get_user(self, session: Session, user_id: str | UUID) -> Optional[User]:
@@ -1555,6 +1664,11 @@ class SqlModelDatabase(AbstractDatabase["SqlModelDatabase"]):
         return session.exec(
             select(Video).options(selectinload(Video.clips)).where(Video.id == video_id)  # type: ignore - selectinload type is weird
         ).first()
+    
+    @read
+    def get_all_videos(self, session: Session) -> Sequence[Video]:
+        """Retrieves all videos from the database."""
+        return session.exec(select(Video)).all()
 
     @read
     def prepare_clips_from_metadata(

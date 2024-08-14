@@ -5,7 +5,7 @@ __all__ = ['MAX_PART_SIZE', 'File', 'AudioFile', 'VideoFile', 'TextFile', 'FileS
            'LocalFileSystem', 'R2StorageClient']
 
 # %% ../nbs/01_filesystems.ipynb 3
-from typing import Generator, Optional
+from typing import Generator, Optional, BinaryIO, IO, Any
 from pydantic import BaseModel
 from .db import User
 from dataclasses import dataclass, field
@@ -134,6 +134,10 @@ class AbstractFileSystem(ABC):
     @abstractmethod
     def delete_file(self, path: str) -> File:
         raise NotImplementedError("This method should be implemented by subclasses")
+    
+    @abstractmethod
+    def file_stream(self, path: str, mode: str = "rb") -> BinaryIO | IO[Any]:
+        raise NotImplementedError("This method should be implemented by subclasses")
 
     @abstractmethod
     @contextmanager
@@ -225,6 +229,11 @@ class LocalFileSystem(AbstractFileSystem):
         else:
             content = None
         return File(uri=path, content=content)
+    
+    def file_stream(self, path: str, mode: str = "rb") -> BinaryIO | IO[Any]:
+        if not os.path.isfile(path) and mode != "wb":
+            raise FileNotFoundError("File does not exist")
+        return open(path, mode)
 
     async def update_file(self: AbstractFileSystem, path: str, content: bytes) -> File:
         if not os.path.isfile(path):
@@ -334,17 +343,23 @@ class R2StorageClient(AbstractFileSystem):
     
     def get_signed_url(self, path: str) -> str:
         return self.client.get_signed_url(path)
+    
+    def file_stream(self, path: str, mode: str = "rb") -> BinaryIO | IO[Any]:
+        if mode != "rb":
+            raise NotImplementedError("R2StorageClient only supports read mode ('rb')")
 
+        return self.client.download_file(path)
+    
     @contextmanager
     def temporary_user_directory(self, user: User) -> Generator[str, None, None]:
-        # R2 doesn't have directories, so we'll just yield a path string
-        from uuid import uuid4
+        # R2 doesn't have directories, raise an error
+        raise NotImplementedError("This client doesn't support temporary directories.")
 
-        temp_path = f"temp/{user.id}/{uuid4()}"
-        try:
-            yield temp_path
-        finally:
-            pass
+        # temp_path = f"temp/{user.id}/{uuid4()}"
+        # try:
+        #     yield temp_path
+        # finally:
+        #     pass
             # Clean up any files created in this temporary path - not implemented yet
             # files = self.client.get_files(prefix=temp_path)
             # for file in files:

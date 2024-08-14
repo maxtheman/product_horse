@@ -505,6 +505,8 @@ class SearchEngine:
         seconds_buffer: int = 10,
         similarity_top_k: int = 25,
     ):
+        if similarity_top_k < 10:
+            raise ValueError("similarity_top_k must be at least 10 (if not more). Smaller values raise chance of no results.")
         self.db = db.as_employee(employee)
         self.client_id = "hardcoded-string-right-now"
         self.seconds_buffer = seconds_buffer
