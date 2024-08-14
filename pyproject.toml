@@ -7,7 +7,7 @@ authors = [
 ]
 dependencies = [
     "pydantic>=2.6.4",
-    "llama-index>=0.10.26",
+    "llama-index>=0.10.65",
     "jupyterlab>=4.1.5",
     "nbdev>=2.3.13",
     "hypothesis>=6.99.9",
@@ -25,7 +25,6 @@ dependencies = [
     "accelerate>=0.28.0",
     "llama-cpp-python>=0.2.57",
     "setuptools>=69.2.0",
-    "instructor>=0.6.7",
     "anthropic>=0.20.0",
     "litellm>=1.34.5",
     "pandas>=2.2.1",
@@ -33,7 +32,6 @@ dependencies = [
     "tqdm>=4.66.2",
     "llama-index-readers-database>=0.1.3",
     "llama-index-llms-anthropic>=0.1.7",
-    "llama-index-vector-stores-chroma>=0.1.6",
     "moviepy>=1.0.3",
     "beautifulsoup4>=4.12.3",
     "seewav>=0.1.0",
@@ -48,7 +46,8 @@ dependencies = [
     "pyjwt>=2.8.0",
     "openapi-python-client>=0.21.2",
     "certifi>=2024.7.4",
-    "tenacity>=9.0.0",
+    "llama-index-vector-stores-postgres>=0.1.14",
+    "instructor>=1.3.7",
 ]
 readme = "README.md"
 requires-python = ">= 3.11"

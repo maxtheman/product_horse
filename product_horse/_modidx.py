@@ -559,5 +559,6 @@ d = { 'settings': { 'branch': 'main',
                                                                                                             'product_horse/search.py'),
                                       'product_horse.search.embed_and_augment_nodes': ( 'search.html#embed_and_augment_nodes',
                                                                                         'product_horse/search.py'),
+                                      'product_horse.search.get_node': ('search.html#get_node', 'product_horse/search.py'),
                                       'product_horse.search.get_nodes_from_transcripts': ( 'search.html#get_nodes_from_transcripts',
                                                                                            'product_horse/search.py')}}}

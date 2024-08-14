@@ -1407,6 +1407,8 @@ class SqlModelDatabase(AbstractDatabase["SqlModelDatabase"]):
         utterance_ids: List[UUID] | List[str],
         word_ids: Optional[List[UUID] | List[str]] = None,
     ) -> Sequence[Utterance]:
+        if len(utterance_ids) == 0:
+            raise ValueError("utterance_ids must be provided")
         utterance_ids_str = ", ".join(f"'{str(id)}'" for id in utterance_ids)
         if word_ids:
             word_ids_str = ", ".join(f"'{str(id)}'" for id in word_ids)
