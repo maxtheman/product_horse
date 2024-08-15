@@ -38,15 +38,13 @@ from llama_index.core.vector_stores.types import (
     MetadataFilter,
     MetadataFilters,
     FilterCondition,
-    FilterOperator,
 )
 from llama_index.core.storage.storage_context import StorageContext
 from dotenv import load_dotenv
-import json
 
 load_dotenv()
 
-# %% ../nbs/05_search.ipynb 8
+# %% ../nbs/05_search.ipynb 5
 async def get_nodes_from_transcripts(
     transcripts: Sequence[Transcription],
 ) -> List[TextNode]:
@@ -119,7 +117,7 @@ async def get_nodes_from_transcripts(
     all_nodes = [*reversed_child_nodes]
     return all_nodes
 
-# %% ../nbs/05_search.ipynb 11
+# %% ../nbs/05_search.ipynb 7
 def embed_and_augment_nodes(
     nodes: List[TextNode],
 ) -> Coroutine[Any, Any, Sequence[BaseNode]]:
@@ -135,7 +133,7 @@ def embed_and_augment_nodes(
     )
     return pipeline.arun(nodes=nodes, in_place=False)
 
-# %% ../nbs/05_search.ipynb 14
+# %% ../nbs/05_search.ipynb 10
 def get_node(vector_store: VectorStore, node_id: str):
     query = VectorStoreQuery(
         node_ids=[node_id]
@@ -146,7 +144,7 @@ def get_node(vector_store: VectorStore, node_id: str):
         raise ValueError(f"Node {node_id} not found")
     return node
 
-# %% ../nbs/05_search.ipynb 17
+# %% ../nbs/05_search.ipynb 13
 class ExtendedQueryBundle(QueryBundle):
     query_str: str
     transcription_ids: List[str]
@@ -469,7 +467,7 @@ class TranscriptIndex(BaseIndex[IndexDict]):
             **kwargs,
         )
 
-# %% ../nbs/05_search.ipynb 18
+# %% ../nbs/05_search.ipynb 14
 class SearchEngine:
     """Search engine for transcripts.
     Usage:

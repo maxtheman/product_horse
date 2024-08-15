@@ -18,7 +18,7 @@ from datetime import datetime, timedelta
 from typing import Dict, Any, AsyncGenerator
 from rich.console import Console
 import io
-
+import requests
 import os
 from dotenv import load_dotenv
 from uuid import uuid4
@@ -72,12 +72,20 @@ async def chunk_reader(
         yield chunk
 
 
-TEST_BIG_FILE = "/Users/max/Documents/product_horse/static_files/temp-videos/How_do_you_think_about_what_the_Value_of_Pave_is_t.mp4"
+file = requests.get("https://github.com/AssemblyAI-Examples/audio-examples/raw/main/20230607_me_canadian_wildfires.mp3")
 
-TEST_LOCAL_FILE = "/Users/max/Documents/product_horse/static_files/temp-videos/test-viz.mp4"
+PATH_TO_BIG_FILE = ... # need to find one
 
-# url = "https://storage.producthorse.workers.dev/"
-url = "http://localhost:8787"
+TEST_LOCAL_FILE = "20230607_me_canadian_wildfires.mp3"
+
+with open(TEST_LOCAL_FILE, "wb") as f:
+    f.write(file.content)
+
+TEST_BIG_FILE = False
+
+url = os.getenv("BASE_URL")
+if not url:
+    raise Exception("BASE_URL is not set")
 
 client = AuthenticatedClient(
     base_url=url,
@@ -151,17 +159,18 @@ end_multi_part_upload = post_files.sync_detailed(
 )
 
 ### big file test ###
-test_key_3 = str(uuid4())
-big_file_start = post_files.sync(
-    client=client,
-    body=FileCreateStartBody(key=test_key_3, visibility=Visibility.PRIVATE),
-)
-
-if not isinstance(big_file_start, R2MultipartUploadResponse):
-    raise Exception("No upload id returned")
-
-
 if TEST_BIG_FILE:
+    test_key_3 = str(uuid4())
+    big_file_start = post_files.sync(
+        client=client,
+        body=FileCreateStartBody(key=test_key_3, visibility=Visibility.PRIVATE),
+    )
+
+    if not isinstance(big_file_start, R2MultipartUploadResponse):
+        raise Exception("No upload id returned")
+
+
+
     async def upload_big_file():
         async def upload_chunk(chunk: bytes, part_number: int):
             upload_file_part = await put_files.asyncio_detailed(
@@ -188,7 +197,7 @@ if TEST_BIG_FILE:
         parts = await asyncio.gather(*[upload_chunk(chunk, i+1) for i, chunk in enumerate(chunks)])
         return parts
 
-if TEST_BIG_FILE:
+
     parts = asyncio.run(upload_big_file())
 
     end_big_multi_part_upload = post_files.sync(
@@ -199,7 +208,7 @@ if TEST_BIG_FILE:
         visibility=Visibility.PRIVATE,
     )
 
-get_big_file = get_files.sync_detailed(client=client, key=test_key_2)
+    get_big_file = get_files.sync_detailed(client=client, key=test_key_2)
 
 file_object.close()
 if TEST_BIG_FILE:
@@ -211,7 +220,7 @@ if __name__ == "__main__":
     console.print(files_got)
     console.print("body", files_got)
     if isinstance(get_specific_file, File):
-        with open("./static_files/downloaded_file.mp4", "wb") as f:
+        with open(TEST_LOCAL_FILE, "wb") as f:
             f.write(get_specific_file.payload.read())
     # console.print(start_multi_part_upload)
     # console.print(upload_file_part)

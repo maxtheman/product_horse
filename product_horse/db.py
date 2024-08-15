@@ -9,7 +9,7 @@ __all__ = ['STRINGS_TO_SANITIZE', 'ValidString', 'ValidPath', 'T', 'P', 'DBType'
            'Transcription', 'UnvalidatedSchema', 'Schema', 'UnvalidatedVideo', 'RenderStatus', 'Video', 'VideoType',
            'UnvalidatedClip', 'CreateClip', 'Clip', 'VideoMetrics', 'PermissionDecorator', 'DatabaseProtocol',
            'get_current_level', 'permission_required', 'read', 'write', 'admin', 'public', 'AbstractDatabase',
-           'SqlModelDatabase']
+           'SqlModelDatabase', 'setup_test_db']
 
 # %% ../nbs/07_db.ipynb 3
 from typing import (
@@ -1754,3 +1754,32 @@ class SqlModelDatabase(AbstractDatabase["SqlModelDatabase"]):
     @property
     def operations(self) -> "Operations":
         return self.Operations(self)
+
+# %% ../nbs/07_db.ipynb 16
+from testcontainers.postgres import PostgresContainer  # type: ignore
+import os
+import subprocess
+import urllib.parse
+
+def setup_test_db(postgres: PostgresContainer, load_data: bool = True):
+    database_url = cast(str, postgres.get_connection_url())  # type: ignore
+    if load_data:
+        url = urllib.parse.urlparse(database_url)
+        psql_url = f"postgresql://{url.username}:{url.password}@{url.hostname}:{url.port}/{url.path[1:]}"
+        subprocess.run(["psql", psql_url, "-f", "../integration-text-data.sql"], check=True)
+    else:
+        superuser_database = SqlModelDatabase(database_url=database_url)
+        superuser_database.operations.create_all_tables()
+        with open("../sql_files/enable_rls.sql", "r") as f:
+            with superuser_database.get_session_for_employee(public=True) as session:
+                rls_password = os.environ["RLS_USER_PASSWORD"]
+                assert rls_password is not None
+                session.execute(text(f"SET app.rls_user_password = '{rls_password}'"))
+                session.execute(text(f.read()))
+                session.execute(text("reset app.rls_user_password"))
+                session.commit()
+        database_url = database_url.replace(
+            "postgresql+psycopg2://test:test",
+            f'postgresql+psycopg2://rls_user:{os.environ["RLS_USER_PASSWORD"]}',
+        )
+    return database_url

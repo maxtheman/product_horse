@@ -5,10 +5,14 @@ import uuid
 
 JWT_TO_USE = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImVmOWJiZjVkLTYxYTAtNDQyZS1iNDM0LTAyYmNhMTc4MGVjYiIsImNvbXBhbnlfaWQiOiI2NjdkZDE0OS1lZjdjLTRiNGMtYWU2Yi04Mzc1Y2VhMWVhNDgiLCJleHAiOjE3MjQ3ODYzMzIsInBlcm1pc3Npb25fbGV2ZWwiOjN9.33qXfPrUK_e0HPa84nnDwPgUE7fCjS_cYWzwyr3MrgQ"
 
-PATH_TO_TEST_FILE = (
-    "/Users/max/Documents/product_horse/static_files/temp-videos/test-viz.mp4"
-)
-PATH_TO_BIG_FILE = "/Users/max/Documents/product_horse/static_files/temp-videos/How_do_you_think_about_what_the_Value_of_Pave_is_t.mp4"
+file = requests.get("https://github.com/AssemblyAI-Examples/audio-examples/raw/main/20230607_me_canadian_wildfires.mp3")
+
+PATH_TO_BIG_FILE = ... # need to find one
+
+FILE_PATH = "20230607_me_canadian_wildfires.mp3"
+
+with open(FILE_PATH, "wb") as f:
+    f.write(file.content)
 
 TEST_BIG_FILE = False
 

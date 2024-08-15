@@ -421,7 +421,7 @@ async def render_clips(
     clip_list: Sequence[Clip],
     temp_server_directory: str,
     temp_server_file_system: AbstractFileSystem,
-    file_system_for_getting_data: AbstractFileSystem
+    file_system_for_getting_data: AbstractFileSystem,
 ) -> List[CompositeVideoClip | VideoClip]:
     """Renders clips, conditionally with metadata.
     Clips must be saved to DB before being passed to this function."""
@@ -429,17 +429,19 @@ async def render_clips(
     for clip in clip_list:
         if clip.file_path is None:
             raise ValueError("No file path to render")
-        
+
         with file_system_for_getting_data.file_stream(clip.file_path) as source_stream:
             temp_file_path = f"{temp_server_directory}/{clip.id}.mp4"
-            with temp_server_file_system.file_stream(temp_file_path, mode="wb") as destination_stream:
+            with temp_server_file_system.file_stream(
+                temp_file_path, mode="wb"
+            ) as destination_stream:
                 chunk_size = 8192  # 8KB chunks, adjust as needed
                 while True:
                     chunk = source_stream.read(chunk_size)
                     if not chunk:
                         break
                     destination_stream.write(chunk)
-        
+
             final_clip = render_clip(
                 clip,
                 temp_server_directory,
@@ -517,16 +519,18 @@ def filter_clips_by_utterance_segments(
         for clip in clips:
             segment_word_ids = {w.id for w in segment.words}
             matching_words = [w for w in clip.words if w.id in segment_word_ids]
-            
+
             if matching_words:
-                filtered_clip = clip.model_copy(update={
-                    "words": matching_words,
-                    "start_ms": segment.start,
-                    "end_ms": segment.end,
-                })
+                filtered_clip = clip.model_copy(
+                    update={
+                        "words": matching_words,
+                        "start_ms": segment.start,
+                        "end_ms": segment.end,
+                    }
+                )
                 filtered_clips.append(filtered_clip)
                 break  # Move to the next segment after finding a matching clip
-    
+
     return filtered_clips
 
 # %% ../nbs/03_audio_video.ipynb 33
@@ -548,7 +552,9 @@ async def create_video_from_utterances(
         transcript_metadatas, employee, hide_metadata=False
     )
 
-    filtered_clips = filter_clips_by_utterance_segments(clips_and_metrics.clips, utterance_segments)
+    filtered_clips = filter_clips_by_utterance_segments(
+        clips_and_metrics.clips, utterance_segments
+    )
 
     video = db.as_employee(employee).save_video(
         UnvalidatedVideo(

@@ -19,7 +19,7 @@ chroma_db/chroma.sqlite3
 *pickle
 *.mp4
 *.db
-
+*.csv
 
 target/*
 target
@@ -27,5 +27,7 @@ target
 node_modules/
 
 *.sqlite
+
+integration-text-data.sql
 
 .wrangler
