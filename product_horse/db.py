@@ -48,7 +48,6 @@ from sqlmodel import (
     select,
     col,
     Relationship,
-    func,
 )
 from datetime import datetime
 from uuid import uuid4, UUID

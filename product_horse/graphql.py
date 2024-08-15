@@ -454,7 +454,20 @@ class Mutation:
         """Takes a long time to respond because it's transcibing and saving each file.
         In the future could be restructured to save all files and then transcribe in the background.
         also need to save video filepath correctly. Right now its:
-            filePath': '/var/folders/qj/d65y3xj97dj5gmv5gpb9bq3m0000gn/T/tmphx0pfwp0/0da7b2b4-03ca-4485-85d5-08955d5bf662/ad14cc47-331b-4573-bfd3-daa982df2c16.mp4"""
+            filePath': '/var/folders/qj/d65y3xj97dj5gmv5gpb9bq3m0000gn/T/tmphx0pfwp0/0da7b2b4-03ca-4485-85d5-08955d5bf662/ad14cc47-331b-4573-bfd3-daa982df2c16.mp4
+        
+            V2: Objective: Avoid egress fees by providing client access to storage_client directly.
+             - Faster upload because they can talk directly to the r2 api instead of the graphql server
+
+            Design:
+            1. two graphql endpoints for client: create_file_upload and query_file_upload.
+                - Respond with status of the upload and the signed url if applicable
+                - creates metadata and sets file status to "upload_initiated"
+                - Handle the actual upload client-side, not in this server
+            2. one graphql endpoint for server: file_upload_update
+                -r2 api will send messages to this endpoint when the file upload is updated
+                - r2 api will queue and send the transcription to this endpoint. This endpoint will create/save transcriptions.
+            """
         user = database.as_employee(info.context.employee).get_user(user_id)
         if user is None:
             raise Exception("User not found")
@@ -509,7 +522,15 @@ class Mutation:
         utterance_segments: Sequence[UtteranceSegmentInput],
         user_id: str,
     ) -> Video:
-        """Refactor to be an initializer and then you query a different endpoint to get the video. Use render status appropriately."""
+        """Refactor to be an initializer and then you query a different endpoint to get the video.
+        Use render status appropriately.
+        Mirror the v2 file upload design for this endpoint.
+        1. create_video_from_utterances is an initializer, send id and respond with a video created
+        - in background, kick off serverless video creation on modal.com. Use python storage_client to get the files there, not here.
+        - modal will talk directly to the database and update the video with the status as it goes.
+        2. get_video, responds with video and status, along with a signed url to download the video if it's ready.
+        - signed url is for the r2 api, not the graphql server, so the client can download the video directly.
+        """
         r2 = R2StorageClient(
             api_url=API_URL,
             base_path=info.context.employee.company_id,
