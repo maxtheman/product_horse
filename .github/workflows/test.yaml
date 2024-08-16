@@ -20,10 +20,10 @@ jobs:
         with:
           enable-cache: true
       - name: Install project
-        run: pip install -e .
-      - name: Setup environment
-        run: dotenvx run -f .env.ci -- rye run setup_env  
+        run: PYTHONDONTWRITEBYTECODE=1 pip install --no-cache-dir -r requirements.lock
       - name: Sync dependencies
         run: dotenvx run -f .env.ci -- rye sync
+      - name: Setup environment
+        run: dotenvx run -f .env.ci -- rye run setup_env 
       - name: Run tests
         run: dotenvx run -f .env.ci --rye run test

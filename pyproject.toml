@@ -5,6 +5,9 @@ description = "Add your description here"
 authors = [
     { name = "Max Caldwell", email = "max@scriptt.ai" }
 ]
+
+virtual=true
+
 dependencies = [
     "pydantic>=2.6.4",
     "llama-index>=0.10.65",
@@ -42,7 +45,7 @@ dependencies = [
     "multiprocess>=0.70.16",
     "strawberry-graphql[debug-server]>=0.235.1",
     "passlib>=1.7.4",
-    "fastapi>=0.111.0",
+    "fastapi[standard]>=0.112.1",
     "pyjwt>=2.8.0",
     "openapi-python-client>=0.21.2",
     "certifi>=2024.7.4",
@@ -61,6 +64,7 @@ export = 'nbdev_prepare'
 exportonly = 'nbdev_export'
 graphql = 'strawberry server product_horse.graphql'
 dev = 'rye run fastapi dev product_horse/graphql.py'
+prod = 'rye run fastapi run product_horse/graphql.py'
 rls-local = '''psql -d product_horse -c "SET app.rls_user_password = '$RLS_USER_PASSWORD';" -f enable_rls.sql'''
 workers = 'npx wrangler dev'
 setup_d1_local = 'npx wrangler d1 execute ph-storage-db --file=/Users/max/Documents/product_horse/sql_files/setup_d1.sql'
@@ -72,8 +76,12 @@ deploy_worker='npx wrangler deploy'
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.rye.workspace]
+members = ["product_horse"]
+
 [tool.rye]
 managed = true
+virtual = true
 dev-dependencies = []
 
 [tool.hatch.metadata]
