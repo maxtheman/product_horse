@@ -27,7 +27,6 @@ jobs:
         run: dotenvx run -f .env.ci -- rye sync
       - name: Setup environment
         run: |
-          echo "PYTHONPATH=$PYTHONPATH:$(pwd)" >> $GITHUB_ENV
-          dotenvx run -f .env.ci -- rye run python scripts/setup_env.py
+          dotenvx run -f .env.ci -- python $(pwd)/scripts/setup_env.py
       - name: Run tests
         run: dotenvx run -f .env.ci --rye run test
