@@ -23,6 +23,8 @@ jobs:
         run: |
           PYTHONDONTWRITEBYTECODE=1 pip install --no-cache-dir -r requirements.lock
           pip install -e .
+      - name: Set PYTHONPATH
+        run: echo "PYTHONPATH=$PYTHONPATH:$(pwd)" >> $GITHUB_ENV
       - name: Sync dependencies
         run: dotenvx run -f .env.ci -- rye sync
       - name: Setup environment

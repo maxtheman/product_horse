@@ -7,7 +7,7 @@ dist/
 wheels/
 *.egg-info
 .env
-.env.keys
+.env.keys*
 # venv
 .venv
 temp-videos/

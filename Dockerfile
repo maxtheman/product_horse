@@ -12,10 +12,13 @@ COPY requirements.lock ./
 COPY product_horse ./product_horse
 COPY storage_client ./storage_client
 COPY scripts/setup_env.py ./setup_env.py
+COPY sql_files ./sql_files
 COPY .env.production .
 RUN PYTHONDONTWRITEBYTECODE=1 pip install --no-cache-dir -r requirements.lock
-RUN dotenvx run -f .env.production -- python setup_env.py
+RUN --mount=type=secret,id=dotenv_key \
+    export DOTENV_PRIVATE_KEY_PRODUCTION=$(cat /run/secrets/dotenv_key) && \
+    dotenvx run -f .env.production -- python setup_env.py
 
 EXPOSE 8000
 
-CMD ["dotenvx", "run", "-f", ".env.production", "--", "python", "-m", "product_horse.graphql"]
+CMD ["dotenvx", "run", "-f", ".env.production", "--", "python", "-v", "-m", "product_horse.graphql"]
