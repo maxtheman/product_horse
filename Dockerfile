@@ -2,9 +2,6 @@ FROM python:3.10.12-slim
 
 WORKDIR /app
 
-ARG DOTENV_PRIVATE_KEY_PRODUCTION
-ENV DOTENV_PRIVATE_KEY_PRODUCTION=$DOTENV_PRIVATE_KEY_PRODUCTION
-
 RUN apt-get update && apt-get install -y ffmpeg curl pkg-config libavformat-dev libavcodec-dev libavdevice-dev libavutil-dev libavfilter-dev libswscale-dev libswresample-dev build-essential libcairo2-dev
 RUN curl -sfS https://dotenvx.sh/install.sh | sh
 
@@ -21,4 +18,4 @@ RUN --mount=type=secret,id=dotenv_key \
 
 EXPOSE 8000
 
-CMD ["dotenvx", "run", "-f", ".env.production", "--", "python", "-v", "-m", "product_horse.graphql"]
+CMD ["dotenvx", "run", "-f", ".env.production", "--", "fastapi", "run", "product_horse/graphql.py"]
