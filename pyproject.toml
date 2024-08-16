@@ -36,6 +36,7 @@ dependencies = [
     "seewav>=0.1.0",
     "scipy>=1.14.0",
     "opencv-python>=4.10.0.84",
+    "product_horse",
     "pydub>=0.25.1",
     "pyav>=12.1.0",
     "multiprocess>=0.70.16",
@@ -50,6 +51,7 @@ dependencies = [
 ]
 readme = "README.md"
 requires-python = ">= 3.11"
+
 
 [tool.rye.scripts]
 setup_env = 'rye run python scripts/setup_env.py'
