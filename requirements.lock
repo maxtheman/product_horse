@@ -111,8 +111,6 @@ dill==0.3.8
 dirtyjson==1.0.8
     # via llama-index-core
     # via llama-index-legacy
-diskcache==5.6.3
-    # via llama-cpp-python
 distro==1.9.0
     # via anthropic
     # via cloudflare
@@ -231,7 +229,6 @@ jinja2==3.1.4
     # via jupyterlab
     # via jupyterlab-server
     # via litellm
-    # via llama-cpp-python
     # via nbconvert
     # via openapi-python-client
     # via torch
@@ -287,7 +284,6 @@ libcst==1.4.0
 litellm==1.43.13
 llama-cloud==0.0.13
     # via llama-index-indices-managed-llama-cloud
-llama-cpp-python==0.2.88
 llama-index==0.10.65
 llama-index-agent-openai==0.2.9
     # via llama-index
@@ -395,7 +391,6 @@ numpy==1.26.4
     # via datasets
     # via gradio
     # via imageio
-    # via llama-cpp-python
     # via llama-index-core
     # via llama-index-legacy
     # via matplotlib
@@ -697,7 +692,6 @@ typing-extensions==4.12.2
     # via gradio-client
     # via huggingface-hub
     # via ipython
-    # via llama-cpp-python
     # via llama-index-core
     # via llama-index-legacy
     # via openai
