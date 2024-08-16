@@ -14,7 +14,6 @@ from storage_client.src.models import (
     R2MultipartUploadResponse,
     R2Object,
     R2ObjectList,
-    R2UploadedPart,
     R2UploadedPartBody,
 )
 from storage_client.src.models import (

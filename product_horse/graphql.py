@@ -66,7 +66,8 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from dotenv import load_dotenv
 import os
 
-load_dotenv()
+if not os.getenv("DATABASE_URL"):
+    load_dotenv()
 
 # %% ../nbs/09_graphql.ipynb 5
 secret = os.getenv("SECRET")

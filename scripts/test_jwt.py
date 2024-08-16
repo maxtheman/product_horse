@@ -1,5 +1,5 @@
 import unittest
-from workers.jwt import encode_jwt, decode_jwt
+from jwt import encode_jwt, decode_jwt
 
 class TestJWT(unittest.TestCase):
     def test_encode_decode(self):

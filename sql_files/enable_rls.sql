@@ -1,5 +1,9 @@
--- Enable RLS for all tables
+-- Set parameters for the current session
+SET app.current_company_id = '';
+SET app.current_permission_level = '';
+SET app.current_employee_id = '';
 
+-- Enable RLS for all tables
 DO $$
 DECLARE
     r RECORD;
@@ -34,15 +38,15 @@ BEGIN
         EXECUTE format('DROP POLICY IF EXISTS %I ON %s', table_name || '_policy', fully_qualified_table_name);
         
         -- Create new policy
-            EXECUTE format('
-                CREATE POLICY %I ON %s
-                USING (
-                    NULLIF(current_setting(''app.current_company_id'', TRUE), '''') IS NOT NULL
-                    AND NULLIF(current_setting(''app.current_permission_level'', TRUE), '''') IS NOT NULL
-                    AND company_id = (NULLIF(current_setting(''app.current_company_id'', TRUE), ''''))::uuid
-                    AND (NULLIF(current_setting(''app.current_permission_level'', TRUE), ''''))::permissionlevel IN (''READ'', ''WRITE'', ''ADMIN'')
-                )
-            ', table_name || '_policy', fully_qualified_table_name);
+        EXECUTE format('
+            CREATE POLICY %I ON %s
+            USING (
+                (SELECT TRUE FROM (SELECT set_config(''app.current_company_id'', current_setting(''app.current_company_id''), TRUE)) AS _)
+                AND (SELECT TRUE FROM (SELECT set_config(''app.current_permission_level'', current_setting(''app.current_permission_level''), TRUE)) AS _)
+                AND company_id = current_setting(''app.current_company_id'')::uuid
+                AND current_setting(''app.current_permission_level'')::permissionlevel IN (''READ'', ''WRITE'', ''ADMIN'')
+            )
+        ', table_name || '_policy', fully_qualified_table_name);
         RAISE NOTICE 'Created policy for table %', fully_qualified_table_name;
     ELSE
         RAISE NOTICE 'Table % does not exist in the current schema', table_name;
@@ -56,13 +60,13 @@ DECLARE
     r RECORD;
 BEGIN
     FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = current_schema()) LOOP
-    if exists (
-        select 1
-        from information_schema.columns
-        where table_name = r.tablename
-        and column_name = 'company_id'
-        and table_name != 'wordcliplink'
-    ) then
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_name = r.tablename
+        AND column_name = 'company_id'
+        AND table_name != 'wordcliplink'
+    ) THEN
         PERFORM create_rls_policy(r.tablename);
     ELSE
         RAISE NOTICE 'Table % does not have a company_id column', r.tablename;
@@ -76,11 +80,11 @@ BEGIN
     DROP POLICY IF EXISTS video_policy ON video;
     CREATE POLICY video_policy ON video
     USING (
-        (company_id = NULLIF(current_setting('app.current_company_id', TRUE), '')::uuid
+        (company_id = current_setting('app.current_company_id')::uuid
         AND (
-            NULLIF(current_setting('app.current_permission_level', TRUE), '') = 'ADMIN'
-            OR (NULLIF(current_setting('app.current_permission_level', TRUE), '')::permissionlevel = 'READ' AND visibility != 'PRIVATE')
-            OR (created_by_id = NULLIF(current_setting('app.current_employee_id', TRUE), '')::uuid)
+            current_setting('app.current_permission_level') = 'ADMIN'
+            OR (current_setting('app.current_permission_level')::permissionlevel = 'READ' AND visibility != 'PRIVATE')
+            OR (created_by_id = current_setting('app.current_employee_id')::uuid)
         ))
         OR visibility = 'PUBLIC'
     );
@@ -90,7 +94,7 @@ $$ LANGUAGE plpgsql;
 SELECT create_video_rls_policy();
 
 -- Special case for Company table
-Create or REPLACE function create_rls_policy_company() returns void as $$
+CREATE OR REPLACE FUNCTION create_rls_policy_company() RETURNS void AS $$
 BEGIN
     DROP POLICY IF EXISTS company_policy ON company;
     CREATE POLICY company_policy ON company
@@ -113,16 +117,12 @@ BEGIN
 END
 $$;
 
-
 -- Grant necessary permissions
 GRANT USAGE ON SCHEMA public TO rls_user;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO rls_user;
 
 -- Ensure new tables automatically grant permissions
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO rls_user;
-
-GRANT SET ON PARAMETER app.current_company_id TO rls_user;
-GRANT SET ON PARAMETER app.current_permission_level TO rls_user;
 
 -- -- Add this at the end of your script if you want the user executing this to become an rls_user
 -- SET ROLE rls_user;

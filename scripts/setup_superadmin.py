@@ -7,7 +7,6 @@ from product_horse.db import (  # Replace 'your_module' with the actual module n
     Company,
     Employee,
     PermissionLevel,
-    SQLModel,
     OrgBoundModel,
 )
 

@@ -13,7 +13,7 @@ pip install product_horse
 
 ## How to use
 
-Fill me in please! Don’t forget code examples:
+```dotenvx run -f .env.{...} -- rye run setup_env```
 
 ``` python
 1+1

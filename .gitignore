@@ -30,5 +30,6 @@ node_modules/
 *.sqlite
 
 integration-text-data.sql
+vector_db_backup.sql
 
 .wrangler

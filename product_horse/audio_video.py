@@ -50,7 +50,8 @@ import tempfile
 # import subprocess as sp
 # from functools import lru_cache
 
-load_dotenv()
+if not os.getenv("DATABASE_URL"):
+    load_dotenv(dotenv_path="../.env.local")
 
 # %% ../nbs/03_audio_video.ipynb 8
 from product_horse.db import (
@@ -533,7 +534,7 @@ def filter_clips_by_utterance_segments(
 
     return filtered_clips
 
-# %% ../nbs/03_audio_video.ipynb 33
+# %% ../nbs/03_audio_video.ipynb 32
 async def create_video_from_utterances(
     db: AbstractDatabase[DBType],
     incoming_file_system: AbstractFileSystem,

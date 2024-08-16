@@ -52,18 +52,19 @@ readme = "README.md"
 requires-python = ">= 3.11"
 
 [tool.rye.scripts]
-prep = 'dotenvx run -f .env.production -- nbdev_prepare'
-test = 'dotenvx run -f .env.production -- nbdev_test'
-export = 'dotenvx run -f .env.production -- nbdev_prepare'
-exportonly = 'dotenvx run -f .env.production -- nbdev_export'
-graphql = 'dotenvx run -f .env.production -- strawberry server product_horse.graphql'
-dev = 'dotenvx run -f .env.production -- rye run fastapi dev product_horse/graphql.py'
-rls-local = '''dotenvx run -f .env.production -- psql -d product_horse -c "SET app.rls_user_password = '$RLS_USER_PASSWORD';" -f enable_rls.sql'''
-workers = 'dotenvx run -f .env.production -- npx wrangler dev'
-setup_d1_local = 'dotenvx run -f .env.production -- npx wrangler d1 execute ph-storage-db --file=/Users/max/Documents/product_horse/sql_files/setup_d1.sql'
-setup_d1_remote = 'dotenvx run -f .env.production -- npx wrangler d1 execute ph-storage-db --file=/Users/max/Documents/product_horse/sql_files/setup_d1.sql --remote'
-build_storage_client = 'dotenvx run -f .env.production -- rye run openapi-python-client generate --path /Users/max/Documents/product_horse/workers/openapi.yaml --output-path /Users/max/Documents/product_horse/storage_client --overwrite'
-deploy_worker='dotenvx run -f .env.production -- npx wrangler deploy'
+setup_env = 'rye run python scripts/setup_env.py'
+prep = 'nbdev_prepare'
+test = 'nbdev_test'
+export = 'nbdev_prepare'
+exportonly = 'nbdev_export'
+graphql = 'strawberry server product_horse.graphql'
+dev = 'rye run fastapi dev product_horse/graphql.py'
+rls-local = '''psql -d product_horse -c "SET app.rls_user_password = '$RLS_USER_PASSWORD';" -f enable_rls.sql'''
+workers = 'npx wrangler dev'
+setup_d1_local = 'npx wrangler d1 execute ph-storage-db --file=/Users/max/Documents/product_horse/sql_files/setup_d1.sql'
+setup_d1_remote = 'npx wrangler d1 execute ph-storage-db --file=/Users/max/Documents/product_horse/sql_files/setup_d1.sql --remote'
+build_storage_client = 'rye run openapi-python-client generate --path /Users/max/Documents/product_horse/workers/openapi.yaml --output-path /Users/max/Documents/product_horse/storage_client --overwrite'
+deploy_worker='npx wrangler deploy'
 
 [build-system]
 requires = ["hatchling"]

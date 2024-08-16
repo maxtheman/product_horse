@@ -2,7 +2,7 @@
 
 # %% auto 0
 __all__ = ['get_nodes_from_transcripts', 'embed_and_augment_nodes', 'get_node', 'ExtendedQueryBundle', 'TranscriptRetriever',
-           'TranscriptIndex', 'SearchEngine']
+           'TranscriptIndex', 'setup_vector_db', 'SearchEngine']
 
 # %% ../nbs/05_search.ipynb 3
 from typing import Any, List, Sequence, Set, Optional, Dict, Coroutine, Tuple
@@ -12,8 +12,14 @@ from product_horse.db import (
     AbstractDatabase,
     DBType,
     Employee,
+    create_default_company_and_employee
 )
+import os
+import psycopg2
+import subprocess
+import tempfile
 from pprint import pprint
+from sqlalchemy import make_url
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.vector_stores.postgres import PGVectorStore
 from llama_index.core.schema import (
@@ -42,7 +48,8 @@ from llama_index.core.vector_stores.types import (
 from llama_index.core.storage.storage_context import StorageContext
 from dotenv import load_dotenv
 
-load_dotenv()
+if not os.getenv("DATABASE_URL"):
+    load_dotenv(dotenv_path="../.env.local")
 
 # %% ../nbs/05_search.ipynb 5
 async def get_nodes_from_transcripts(
@@ -117,7 +124,7 @@ async def get_nodes_from_transcripts(
     all_nodes = [*reversed_child_nodes]
     return all_nodes
 
-# %% ../nbs/05_search.ipynb 7
+# %% ../nbs/05_search.ipynb 8
 def embed_and_augment_nodes(
     nodes: List[TextNode],
 ) -> Coroutine[Any, Any, Sequence[BaseNode]]:
@@ -468,6 +475,47 @@ class TranscriptIndex(BaseIndex[IndexDict]):
         )
 
 # %% ../nbs/05_search.ipynb 14
+def setup_vector_db(connection_string: str):
+    # Get connection string from environment variable
+    if not connection_string:
+        raise ValueError("POSTGRES_URL environment variable is not set")
+
+    # Create vector_db database
+    db_name = "vector_db"
+    conn = psycopg2.connect(connection_string)
+    conn.autocommit = True
+    with conn.cursor() as c:
+        c.execute("SELECT 1 FROM pg_database WHERE datname = %s", (db_name,))
+        if c.fetchone() is None:
+            c.execute(f"CREATE DATABASE {db_name}")
+    conn.close()
+
+    # Update connection string to use the new database
+    url = make_url(connection_string)
+    vector_db_url = url.set(database=db_name)
+
+    # Create vector store
+    vector_store = PGVectorStore.from_params(
+        database=db_name,
+        host=url.host,
+        password=url.password,
+        port=str(url.port or 5432),
+        user=url.username,
+        table_name="transcripts",
+        embed_dim=1536,  # openai embedding dimension
+        hnsw_kwargs={
+            "hnsw_m": 16,
+            "hnsw_ef_construction": 64,
+            "hnsw_ef_search": 40,
+            "hnsw_dist_method": "vector_cosine_ops",
+        },
+    )
+
+    print(f"Vector database '{db_name}' and table 'transcripts' created successfully.")
+    print(f"New vector database URL: {vector_db_url}")
+    return vector_db_url
+
+# %% ../nbs/05_search.ipynb 16
 class SearchEngine:
     """Search engine for transcripts.
     Usage:
@@ -502,10 +550,6 @@ class SearchEngine:
 
     def _create_client(self) -> PGVectorStore:
         """returns vector store. Creates vector store if they haven't been already."""
-        import psycopg2
-        import os
-        from sqlalchemy import make_url
-
         connection_string = os.environ.get("VECTOR_PG_URL") if self.db_url is None else self.db_url
         if not connection_string:
             raise ValueError("DATABASE_URL is not set")
@@ -518,13 +562,15 @@ class SearchEngine:
                 c.execute(f"CREATE DATABASE {db_name}")
         conn.close()
         url = make_url(connection_string)
-        if url.port is None:
-            raise ValueError("Port is not set")
+        port = 5432
+        if url.port is not None:
+            port = url.port
+
         vector_store = PGVectorStore.from_params(
             database=db_name,
             host=url.host,
             password=url.password,
-            port=str(url.port),
+            port=str(port),
             user=url.username,
             table_name="transcripts",
             embed_dim=1536,  # openai embedding dimension
@@ -600,5 +646,7 @@ class SearchEngine:
         query_bundle.similarity_top_k = self.similarity_top_k
         result = query_engine.retrieve(query_bundle)
         utterance_ids = [node.node.id_ for node in result]
+        if len(utterance_ids) == 0:
+            return []
         utterances = self.db.as_employee(self.employee).get_utterances(utterance_ids)
         return utterances

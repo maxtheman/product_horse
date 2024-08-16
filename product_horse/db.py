@@ -9,7 +9,7 @@ __all__ = ['STRINGS_TO_SANITIZE', 'ValidString', 'ValidPath', 'T', 'P', 'DBType'
            'Transcription', 'UnvalidatedSchema', 'Schema', 'UnvalidatedVideo', 'RenderStatus', 'Video', 'VideoType',
            'UnvalidatedClip', 'CreateClip', 'Clip', 'VideoMetrics', 'PermissionDecorator', 'DatabaseProtocol',
            'get_current_level', 'permission_required', 'read', 'write', 'admin', 'public', 'AbstractDatabase',
-           'SqlModelDatabase', 'setup_test_db']
+           'SqlModelDatabase', 'setup_test_db', 'create_default_company_and_employee', 'setup_production_db']
 
 # %% ../nbs/07_db.ipynb 3
 from typing import (
@@ -57,9 +57,11 @@ from passlib.hash import pbkdf2_sha256
 import warnings
 import re
 from rich.console import Console
+import os
 from dotenv import load_dotenv
 
-load_dotenv()
+if not os.getenv("DATABASE_URL"):
+    load_dotenv(dotenv_path="../.env.local")
 
 # %% ../nbs/07_db.ipynb 4
 def validate_file_path(v: str) -> str:
@@ -1762,23 +1764,64 @@ import urllib.parse
 
 def setup_test_db(postgres: PostgresContainer, load_data: bool = True):
     database_url = cast(str, postgres.get_connection_url())  # type: ignore
-    if load_data:
-        url = urllib.parse.urlparse(database_url)
-        psql_url = f"postgresql://{url.username}:{url.password}@{url.hostname}:{url.port}/{url.path[1:]}"
-        subprocess.run(["psql", psql_url, "-f", "../integration-text-data.sql"], check=True)
-    else:
+    with open("../sql_files/enable_rls.sql", "r") as f:
         superuser_database = SqlModelDatabase(database_url=database_url)
         superuser_database.operations.create_all_tables()
-        with open("../sql_files/enable_rls.sql", "r") as f:
-            with superuser_database.get_session_for_employee(public=True) as session:
-                rls_password = os.environ["RLS_USER_PASSWORD"]
-                assert rls_password is not None
-                session.execute(text(f"SET app.rls_user_password = '{rls_password}'"))
-                session.execute(text(f.read()))
-                session.execute(text("reset app.rls_user_password"))
-                session.commit()
+        with superuser_database.get_session_for_employee(public=True) as session:
+            rls_password = os.environ["RLS_USER_PASSWORD"]
+            assert rls_password is not None
+            session.execute(text(f"SET app.rls_user_password = '{rls_password}'"))
+            session.execute(text(f.read()))
+            session.execute(text("reset app.rls_user_password"))
+            session.commit()
+        if load_data:
+            superuser_database = SqlModelDatabase(database_url=database_url)
+            superuser_database.operations.create_all_tables()
+            url = urllib.parse.urlparse(database_url)
+            psql_url = f"postgresql://{url.username}:{url.password}@{url.hostname}:{url.port}/{url.path[1:]}"
+            subprocess.run(["psql", psql_url, "-f", "../integration-text-data.sql"], check=True)
         database_url = database_url.replace(
             "postgresql+psycopg2://test:test",
             f'postgresql+psycopg2://rls_user:{os.environ["RLS_USER_PASSWORD"]}',
         )
     return database_url
+
+def create_default_company_and_employee(db: SqlModelDatabase) -> tuple[UUID, UUID]:
+    with db.get_session_for_employee(public=True) as session:
+        # Create default company
+        default_company = Company(name="Default Company")
+        session.add(default_company)
+        session.flush()
+
+        # Create default employee
+        default_employee = Employee(
+            email="admin@default.com",
+            name="Default Admin",
+            permission_level=PermissionLevel.ADMIN,
+            company_id=default_company.id,
+            hashed_password=pbkdf2_sha256.hash("password").encode("utf-8"),
+        )
+        session.add(default_employee)
+        session.commit()
+
+        return default_company.id, default_employee.id
+
+# %% ../nbs/07_db.ipynb 17
+def setup_production_db(database_url: str):
+    superuser_database = SqlModelDatabase(database_url=database_url)
+    superuser_database.operations.create_all_tables()   
+    # Enable Row-Level Security
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    sql_path = os.path.join(script_dir, '..', 'sql_files', 'enable_rls.sql')
+    with open(sql_path, "r") as f:
+        with superuser_database.get_session_for_employee(public=True) as session:
+            rls_password = os.environ["RLS_USER_PASSWORD"]
+            assert rls_password is not None
+            session.execute(text(f"SET local app.rls_user_password = '{rls_password}'"))
+            session.execute(text(f.read()))
+            session.execute(text("reset app.rls_user_password"))
+            session.commit()
+    return database_url.replace(
+        "postgresql+psycopg2://",
+        f'postgresql+psycopg2://rls_user:{os.environ["RLS_USER_PASSWORD"]}@'
+    )
