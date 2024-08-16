@@ -19,7 +19,7 @@ jobs:
         uses: eifinger/setup-rye@v4
         with:
           enable-cache: true
-      - name Setup environment
+      - name: Setup environment
         run: dotenvx run -f .env.ci -- rye run setup_env  
       - name: Sync dependencies
         run: dotenvx run -f .env.ci -- rye sync
