@@ -36,3 +36,14 @@ jobs:
           dotenvx run -f .env.ci -- python $(pwd)/scripts/setup_env.py
       - name: Run tests
         run: dotenvx run -f .env.ci -- rye run nbdev_test --skip_file_re "07_db\.ipynb" --do_print
+
+  deploy:
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - run: fly deploy --build-secret dotenv_key="${{ secrets.DOTENV_PRIVATE_KEY_CI }}"
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
