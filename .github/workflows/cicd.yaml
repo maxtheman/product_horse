@@ -36,6 +36,3 @@ jobs:
           dotenvx run -f .env.ci -- python $(pwd)/scripts/setup_env.py
       - name: Run tests
         run: dotenvx run -f .env.ci -- rye run nbdev_test --skip_file_re "07_db\.ipynb" --do_print
-      - name: Run only db test
-        continue-on-error: true
-        run: nbdev_test --path nbs/07_db.ipynb --do_print

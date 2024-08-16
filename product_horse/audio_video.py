@@ -282,7 +282,7 @@ def put_words_over_video_subset(
             ),  # because of the weird resolution flipping issue
             color=word_color,
             stroke_color="black",
-            font="Helvetica",
+            font="Arial",
             stroke_width=2,
         )
         gap_before_word = word_start_adj - previous_word_end
@@ -457,7 +457,7 @@ async def render_clips(
                     fontsize=48,
                     color="white",
                     stroke_color="black",
-                    font="Helvetica",
+                    font="Arial",
                     stroke_width=2,
                 )
                 metadata_banner = metadata_banner.set_position(

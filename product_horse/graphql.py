@@ -29,6 +29,8 @@ import strawberry
 import jwt
 from jwt.exceptions import InvalidTokenError
 from fastapi import FastAPI
+from strawberry.extensions import AddValidationRules
+from graphql.validation import NoSchemaIntrospectionCustomRule
 from .filesystems import R2StorageClient, FilePathType, LocalFileSystem
 from product_horse.db import (
     SqlModelDatabase,
@@ -580,11 +582,14 @@ async def get_context() -> Context:
     return Context()
 
 
-schema = strawberry.Schema(Query, Mutation, scalar_overrides={UploadFile: Upload})
+schema = strawberry.Schema(Query, Mutation, scalar_overrides={UploadFile: Upload}, extensions=[
+        AddValidationRules([NoSchemaIntrospectionCustomRule]),
+    ],)
 
 graphql_app = GraphQLRouter(
     schema,
     context_getter=get_context,
+    graphql_ide=None,
 )
 
 app = FastAPI()
