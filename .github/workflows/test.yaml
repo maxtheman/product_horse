@@ -31,4 +31,4 @@ jobs:
         run: |
           dotenvx run -f .env.ci -- python $(pwd)/scripts/setup_env.py
       - name: Run tests
-        run: dotenvx run -f .env.ci --rye run test
+        run: dotenvx run -f .env.ci -- rye run test
