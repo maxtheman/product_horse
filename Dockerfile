@@ -8,10 +8,10 @@ RUN curl -sfS https://dotenvx.sh/install.sh | sh
 COPY requirements.lock ./
 COPY product_horse ./product_horse
 COPY storage_client ./storage_client
-COPY scripts/setup_env.py /setup_env.py
+COPY scripts/setup_env.py ./setup_env.py
 COPY .env.production .
 RUN PYTHONDONTWRITEBYTECODE=1 pip install --no-cache-dir -r requirements.lock
-RUN python run setup_env.py
+RUN python setup_env.py
 
 EXPOSE 8000
 

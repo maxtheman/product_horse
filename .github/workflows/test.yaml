@@ -20,10 +20,14 @@ jobs:
         with:
           enable-cache: true
       - name: Install project
-        run: PYTHONDONTWRITEBYTECODE=1 pip install --no-cache-dir -r requirements.lock
+        run: |
+          PYTHONDONTWRITEBYTECODE=1 pip install --no-cache-dir -r requirements.lock
+          pip install -e .
       - name: Sync dependencies
         run: dotenvx run -f .env.ci -- rye sync
       - name: Setup environment
-        run: dotenvx run -f .env.ci -- rye run python scripts/setup_env.py 
+        run: |
+          echo "PYTHONPATH=$PYTHONPATH:$(pwd)" >> $GITHUB_ENV
+          dotenvx run -f .env.ci -- rye run python scripts/setup_env.py
       - name: Run tests
         run: dotenvx run -f .env.ci --rye run test
