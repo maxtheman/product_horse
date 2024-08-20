@@ -892,7 +892,7 @@ TModelOut = TypeVar("TModelOut", bound=SQLModel)
 
 class SqlModelDatabase(AbstractDatabase["SqlModelDatabase"]):
     def __init__(self, database_url: str):
-        self.engine = create_engine(database_url)
+        self.engine = create_engine(database_url, pool_pre_ping=True)
         SQLModel.metadata.create_all(self.engine)
         self.employee = None
 
@@ -1559,6 +1559,7 @@ class SqlModelDatabase(AbstractDatabase["SqlModelDatabase"]):
                 .options(
                     selectinload(Transcription.utterances).joinedload(Utterance.words)  # type: ignore - selectinload type is weird
                 )
+                .options(selectinload(Transcription.file_metadata)) # type: ignore - selectinload type is weird
                 .where(col(Transcription.file_id).in_(unique_metadata_ids))
             ).all()
             return transcripts

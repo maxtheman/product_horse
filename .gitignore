@@ -21,6 +21,7 @@ chroma_db/chroma.sqlite3
 *.mp4
 *.db
 *.csv
+*.png
 
 target/*
 target

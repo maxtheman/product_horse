@@ -133,10 +133,10 @@ async def get_relevant_utterances_from_query(
     employee: Employee,
 ) -> Sequence[Utterance]:
     """
-    Returns time-sorted utterances from a query
+    Returns time-sorted utterances from a query. Really shitty, needs fixing.
     """
     # allow for several clips from each transcript
-    clips_requested = int(min(len(transcripts) * 2, 50))
+    clips_requested = int(max(len(transcripts) * 2, 50))
     search_engine = SearchEngine(
         seconds_buffer=2, similarity_top_k=clips_requested, db=db, employee=employee
     )
