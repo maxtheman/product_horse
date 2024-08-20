@@ -36,7 +36,8 @@ jobs:
           dotenvx run -f .env.ci -- python $(pwd)/scripts/setup_env.py
       - name: Run tests
         run: dotenvx run -f .env.ci -- rye run nbdev_test --skip_file_re "07_db\.ipynb" --do_print
-
+      - name: deploy CF Worker
+        runs: cd workers && dotenvx run -f ../.env.ci -- npx wrangler deploy
   deploy:
     needs: test
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'

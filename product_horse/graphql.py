@@ -27,6 +27,7 @@ from enum import Enum
 from uuid import UUID
 import strawberry
 import jwt
+from random import randint
 from jwt.exceptions import InvalidTokenError
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -59,7 +60,7 @@ from datetime import datetime, timedelta
 from psycopg2 import OperationalError
 
 from pydantic import ValidationError
-from .audio_video import AudioEditor, create_video_from_utterances
+from .audio_video import AudioEditor, create_video_from_utterances as create_video
 from .api import get_relevant_utterances_from_query
 
 from strawberry.permission import BasePermission
@@ -76,7 +77,8 @@ if not os.getenv("DATABASE_URL"):
 
 # %% ../nbs/09_graphql.ipynb 5
 secret = os.getenv("SECRET")
-API_URL = "https://storage.producthorse.workers.dev/"  # or localhost:8787
+API_URL = "https://storage.producthorse.workers.dev/"  # or localhost:8787 - but won't work with transcription
+# API_URL = "http://localhost:8787"
 
 # %% ../nbs/09_graphql.ipynb 6
 database_url = os.getenv("DATABASE_URL")
@@ -131,7 +133,7 @@ def decode_jwt(token: str) -> JwtPayload:
 
 class Context(BaseContext):
     @property
-    def employee(self):
+    def employee(self) -> Optional[Employee]:
         request = self.request
         if request is None:
             print("Request is None")
@@ -149,7 +151,7 @@ class Context(BaseContext):
         return employee
 
     @property
-    def jwt(self):
+    def jwt(self) -> Optional[str]:
         request = self.request
         if request is None:
             return None
@@ -476,7 +478,7 @@ class Mutation:
     @strawberry.mutation(permission_classes=[IsAuthenticated])
     @retry_on_operational_error
     def save_user(
-        self, info: strawberry.Info, name: str, external_id: Optional[str] = None
+        self, info: strawberry.Info[Context, Any], name: str, external_id: Optional[str] = None
     ) -> User:
         external_id = external_id if external_id is not None else ""
         user = UnvalidatedUser(
@@ -573,6 +575,7 @@ class Mutation:
         self,
         info: strawberry.Info,
         utterance_segments: Sequence[UtteranceSegmentInput],
+        title: str,
     ) -> Video:
         """Refactor to be an initializer and then you query a different endpoint to get the video.
         Use render status appropriately.
@@ -594,6 +597,11 @@ class Mutation:
         utterances = database.as_employee(info.context.employee).get_utterances(
             utterance_ids, word_ids=word_ids
         )
+        # check to see if video title already exists
+        video_exists = database.as_employee(info.context.employee).get_all_videos()
+        for video in video_exists:
+            if video.title == title:
+                title = f"{title}-{randint(1, 200)}"
         utterance_segments_for_video : list[UtteranceSegment] = []
         for utterance in utterances:
             utterance_segments_for_video.append(
@@ -614,17 +622,20 @@ class Mutation:
         user = database.as_employee(info.context.employee).get_all_users()[0]
         if user is None:
             raise Exception("User not found")
-        with server_file_system.temporary_user_directory(user) as temp_directory:
-            video = await create_video_from_utterances(
-                database,
-                incoming_file_system=r2,
-                local_file_system=server_file_system,
-                employee=info.context.employee,
-                user=user,
-                utterance_segments=utterance_segments_for_video,
-                output_path=temp_directory,
-            )
-            return video  # type: ignore
+        final_video_file_path = server_file_system.build_user_path(user, FilePathType.USER_ID_BASE_VIDEO)
+        final_destination = f"{final_video_file_path}/{title}.mp4".strip('/') #type: ignore
+        print(f"Final destination: {final_destination}")
+        video = await create_video(
+            database,
+            remote_file_system=r2,
+            local_file_system=server_file_system,
+            employee=info.context.employee,
+            user=user,
+            utterance_segments=utterance_segments_for_video,
+            final_destination=final_destination,
+            title=title,
+        )
+        return video  # type: ignore
 
 # %% ../nbs/09_graphql.ipynb 15
 async def get_context() -> Context:

@@ -91,8 +91,8 @@ export const GET_TRANSCRIPT_QUERY = gql`
 `;
 
 export const CREATE_VIDEO_MUTATION = gql`
-  mutation CreateVideo($utteranceSegments: [UtteranceSegmentInput!]!) {
-    createVideoFromUtterances(utteranceSegments: $utteranceSegments) {
+  mutation CreateVideo($utteranceSegments: [UtteranceSegmentInput!]!, $title: String!) {
+    createVideoFromUtterances(utteranceSegments: $utteranceSegments, title: $title) {
       id
       title
       filePath

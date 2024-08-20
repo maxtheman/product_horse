@@ -59,25 +59,21 @@ async def generate_signed_url_token(
     env: Env, file_key, employee_id, company_id, expiration_seconds=300
 ):
     token = str(uuid.uuid4())
-    print(f"File key: {file_key}")
     expiration = int(time.time()) + expiration_seconds
     value = f"{expiration}|{file_key}|{employee_id}|{company_id}"
     await env.SIGNED_URL_KEYS.put(token, value)
     test_get = await env.SIGNED_URL_KEYS.get(token)
-    print(f"Test get: {test_get}")
     if not test_get:
         raise ValueError("Failed to generate signed URL token")
     return token
 
 
 async def validate_signed_url(env: Env, token):
-    print(f"Token: {token}")
     value = await env.SIGNED_URL_KEYS.get(token)
     if not value:
         return None
 
     expiration, file_key, employee_id, company_id = value.split("|", 3)
-    print(f"Expiration: {expiration}, file_key: {file_key}, employee_id: {employee_id}, company_id: {company_id}")
     employee = await get_employee(env.DB, employee_id, company_id)
     if int(time.time()) > int(expiration):
         print("Token expired")
@@ -467,9 +463,8 @@ async def make_multi_part_upload(
                 raise ValueError("Upload ID is required")
             if key_param is None:
                 raise ValueError("Key is required")
-            key_param_json = unquote(key_param)
             object_to_upload_to = bucket.resumeMultipartUpload(
-                key_param_json,
+                key_param,
                 upload_id,
             )
             js_body = to_js(multi_part_body_raw)
@@ -501,8 +496,6 @@ async def delete(
 async def on_fetch(request: WorkerRequestType, env: Env):
     url_path, params = get_url_path_and_params(request.url)
     auth_with_token = (url_path == "download" and "token" in params)
-    print('url_path', url_path)
-    print('params', params)
     if "X-API-Key" not in request.headers and not auth_with_token:
         print("No X-API-Key")
         js_error = json.dumps({"error": "Unauthorized"})

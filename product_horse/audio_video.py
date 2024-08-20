@@ -490,14 +490,10 @@ def create_video_from_clips(
         raise ValueError("Video is already complete")
     if video.render_status == RenderStatus.failed:
         raise ValueError("Video failed to render")
-    video_buffer = io.BytesIO()
     try:
         with final_video as video_render:
             print(f"Writing video to {video.file_path}")
             write_video(temp_file_path, video_render)
-
-        with open(temp_file_path, "rb") as f:
-            video_buffer = io.BytesIO(f.read())
         video.resolution_x = target_resolution[1]
         video.resolution_y = target_resolution[0]
         video.fps = max_fps
@@ -505,7 +501,7 @@ def create_video_from_clips(
     except Exception as e:
         video.render_status = RenderStatus.failed
         raise e
-    return video_buffer
+    return temp_file_path
 
 # %% ../nbs/03_audio_video.ipynb 29
 def filter_clips_by_utterance_segments(
@@ -537,12 +533,13 @@ def filter_clips_by_utterance_segments(
 # %% ../nbs/03_audio_video.ipynb 32
 async def create_video_from_utterances(
     db: AbstractDatabase[DBType],
-    incoming_file_system: AbstractFileSystem,
+    remote_file_system: AbstractFileSystem,
     local_file_system: LocalFileSystem,
     employee: Employee,
     user: User,
     utterance_segments: List[UtteranceSegment],
-    output_path: str,
+    final_destination: str,
+    title: str,
 ) -> Video:
     transcript_ids = list(set(str(u.transcription_id) for u in utterance_segments))
     transcript_metadatas = db.as_employee(
@@ -559,8 +556,8 @@ async def create_video_from_utterances(
 
     video = db.as_employee(employee).save_video(
         UnvalidatedVideo(
-            title="Generated Video",
-            file_path=output_path,
+            title=title,
+            file_path=final_destination,
             created_by_id=employee.id,
             company_id=employee.company_id,
             fps=clips_and_metrics.max_fps,
@@ -578,24 +575,31 @@ async def create_video_from_utterances(
         clips_to_render = await render_clips(
             saved_clips,
             temp_directory,
-            file_system_for_getting_data=incoming_file_system,
+            file_system_for_getting_data=remote_file_system,
             temp_server_file_system=local_file_system,
         )
         with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as temp_file:
             temp_file_path = temp_file.name
-            video_buffer = create_video_from_clips(
+            video_path = create_video_from_clips(
                 clips_to_render,
                 video,
                 temp_file_path,
                 video.fps,
                 (video.resolution_x, video.resolution_y),
             )
-            final_video = await local_file_system.create_file(
-                output_path,
-                video_buffer,
-                name=f"{video.id}.mp4",
-                authorized=True,
-            )
+            with open(video_path, "rb") as f:
+                video_buffer = io.BytesIO(f.read())
+                try:
+                    final_video = await remote_file_system.create_file(
+                        final_destination,
+                        video_buffer,
+                        name=f"{video.id}.mp4",
+                        authorized=True,
+                    )
+                except Exception as e:
+                    video.render_status = RenderStatus.failed
+                    db.as_employee(employee).save_video(video)
+                    raise e
         video.file_path = final_video.uri
         video_final = db.as_employee(employee).save_video(video)
 

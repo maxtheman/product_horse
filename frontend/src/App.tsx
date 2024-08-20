@@ -327,16 +327,6 @@ export function SaveFilesForm({ userId }: { userId: string }) {
 
 // GET UTTERANCES
 
-interface UtteranceStore {
-  utterances: any[];
-  setUtterances: (utterances: any[]) => void;
-}
-
-const useUtteranceStore = create<UtteranceStore>((set) => ({
-  utterances: [],
-  setUtterances: (utterances) => set({ utterances }),
-}));
-
 const utterancesSchema = z.object({
   question: z.string().min(1),
   transcriptIds: z.array(z.string()).nonempty()
@@ -375,12 +365,15 @@ const GetUtterancesForm = () => {
         }));
 
       if (utteranceSegments.length > 0) {
-        const result = await createVideo({ utteranceSegments });
+        const result = await createVideo({
+          utteranceSegments,
+          title: data.question // Set the title to the query
+        });
 
         if (result.data) {
           setVideoCreated(true);
           setTimeout(() => {
-            navigate(`/videos/${result.data.createVideo.id}`);
+            navigate(`/videos/${result.data.createVideoFromUtterances.id}`);
           }, 1000);
         }
         if (result.error) {
@@ -470,7 +463,7 @@ const GetUtterancesForm = () => {
             type="submit"
             disabled={isSubmitting || utterancesResult.fetching}
           >
-            {utterancesResult.fetching ? "Loading Utterances..." : isSubmitting ? "Getting Utterances..." : "Get Utterances"}
+            {utterancesResult.fetching ? "Loading Utterances..." : isSubmitting ? "Working..." : "Get Utterances"}
           </Button>
         </form>
       </Form>
@@ -546,14 +539,13 @@ const VideoPlayer = ({ id }: { id: string }) => {
   const { title, signedUrl, renderStatus } = result.data.getVideo;
 
   return (
-    <div>
+    <div className="flex flex-col items-center">
       <h1>{title}</h1>
       <p>Status: {renderStatus}</p>
       {renderStatus === 'complete' && signedUrl && (
-        // <video controls src={signedUrl} className="w-full max-w-3xl">
-        //   Your browser does not support the video tag.
-        // </video>
-        <p>Video is available at {signedUrl}</p>
+        <video controls src={signedUrl} className="w-full max-w-3xl">
+          Your browser does not support the video tag.
+        </video>
       )}
     </div>
   );

@@ -316,12 +316,12 @@ class R2StorageClient(AbstractFileSystem):
             raise FileNotFoundError("Access denied")
         if isinstance(content, bytes):
             content = io.BytesIO(content)
-        path_to_write = path + "/" + name
+        print(f"Uploading file to {path}")
         response = await self.client.upload_file(
-            content, path_to_write, visibility, mime_type
+            content, path, visibility, mime_type
         )
         if response is not None:
-            return File(uri=path_to_write)
+            return File(uri=path)
         else:
             raise Exception("Failed to create file")
 
