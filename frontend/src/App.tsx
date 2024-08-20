@@ -12,7 +12,7 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm, Controller } from "react-hook-form"
 import { REGISTER_MUTATION, SAVE_USER_MUTATION, GET_USERS_QUERY, SAVE_FILES_MUTATION, GET_UTTERANCES_QUERY, GET_TRANSCRIPT_QUERY, CREATE_VIDEO_MUTATION, GET_ALL_VIDEOS_QUERY, GET_VIDEO_QUERY } from "./graphql";
 import { tokenManager } from "./utils/tokenManager";
-import { Link, useRoute } from "wouter";
+import { Link } from "wouter";
 import {
   NavigationMenu,
   NavigationMenuList,
@@ -260,7 +260,7 @@ export function SaveFilesForm({ userId }: { userId: string }) {
           fileType: file.type.startsWith('video/') ? 'VIDEO' : 'AUDIO',
           resolutionX: video.videoWidth,
           resolutionY: video.videoHeight,
-          frameRate: video.mozFrameRate || video.webkitFrameRate || 24,
+          frameRate: (video as any).mozFrameRate || (video as any).webkitFrameRate || 24,
           duration: video.duration,
           fileName: file.name,
         });
