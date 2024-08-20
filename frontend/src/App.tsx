@@ -1,3 +1,5 @@
+import { REGISTER_MUTATION, SAVE_USER_MUTATION, GET_USERS_QUERY, SAVE_FILES_MUTATION, GET_UTTERANCES_QUERY, GET_TRANSCRIPT_QUERY, CREATE_VIDEO_MUTATION, GET_ALL_VIDEOS_QUERY, GET_VIDEO_QUERY } from "./graphql";
+import { tokenManager } from "./utils/tokenManager";
 import { create } from 'zustand'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -10,9 +12,7 @@ import { useState } from "react";
 import { z } from "zod"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm, Controller } from "react-hook-form"
-import { REGISTER_MUTATION, SAVE_USER_MUTATION, GET_USERS_QUERY, SAVE_FILES_MUTATION, GET_UTTERANCES_QUERY, GET_TRANSCRIPT_QUERY, CREATE_VIDEO_MUTATION, GET_ALL_VIDEOS_QUERY, GET_VIDEO_QUERY } from "./graphql";
-import { tokenManager } from "./utils/tokenManager";
-import { Link } from "wouter";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   NavigationMenu,
   NavigationMenuList,
@@ -21,8 +21,31 @@ import {
   navigationMenuTriggerStyle,
 } from "@/components/ui/navigation-menu";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { useLocation, Router, Switch, Route } from "wouter"
+import { useLocation, Router, Switch, Route, Link } from "wouter"
 
+
+// HELPERS
+interface AnimatedErrorMessageProps {
+  message?: string;
+}
+
+const AnimatedErrorMessage: React.FC<AnimatedErrorMessageProps> = ({ message }) => {
+  return (
+    <AnimatePresence>
+      {message && (
+        <motion.div
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: 'auto' }}
+          exit={{ opacity: 0, height: 0 }}
+          transition={{ duration: 0.3 }}
+          className="text-sm text-red-500"
+        >
+          {message}
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+};
 
 // AUTHENTICATION
 
@@ -71,68 +94,70 @@ const SignUpForm = () => {
     setIsSubmitting(false);
   };
 
-  return (
-    <>
-      <h1 className="text-2xl font-bold">Sign Up</h1>
+  return(
+    <div className="flex items-center justify-center min-h-screen bg-gray-100">
+    <div className="w-full max-w-md p-8 space-y-6 bg-white rounded-lg shadow-md">
+      <h2 className="text-2xl font-bold text-center">Sign Up</h2>
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="w-full max-w-md space-y-4">
-          {form.formState.errors.root && <p className="text-red-500">{form.formState.errors.root.message}</p>}
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          <AnimatedErrorMessage message={form.formState.errors.root?.message} />
           <FormField
             control={form.control}
             name="name"
             render={({ field }) => (
-              <FormItem>
-                <FormLabel>Name</FormLabel>
-                <FormControl>
-                  <Input placeholder="John Doe" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
+              <div className="space-y-2">
+                <FormLabel htmlFor="name">Name</FormLabel>
+                <Input id="name" placeholder="John Doe" {...field} />
+                <AnimatedErrorMessage message={form.formState.errors.name?.message} />
+              </div>
             )}
           />
           <FormField
             control={form.control}
             name="email"
             render={({ field }) => (
-              <FormItem>
-                <FormLabel>Email</FormLabel>
-                <FormControl>
-                  <Input type="email" placeholder="john@example.com" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
+              <div className="space-y-2">
+                <FormLabel htmlFor="email">Email</FormLabel>
+                <Input id="email" type="email" placeholder="john@example.com" {...field} />
+                <AnimatedErrorMessage message={form.formState.errors.email?.message} />
+              </div>
             )}
           />
           <FormField
             control={form.control}
             name="password"
             render={({ field }) => (
-              <FormItem>
-                <FormLabel>Password</FormLabel>
-                <FormControl>
-                  <Input type="password" placeholder="********" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
+              <div className="space-y-2">
+                <FormLabel htmlFor="password">Password</FormLabel>
+                <Input id="password" type="password" placeholder="********" {...field} />
+                <AnimatedErrorMessage message={form.formState.errors.password?.message} />
+              </div>
             )}
           />
           <FormField
             control={form.control}
             name="companyName"
             render={({ field }) => (
-              <FormItem>
-                <FormLabel>Company Name</FormLabel>
-                <FormControl>
-                  <Input placeholder="Acme Inc." {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
+              <div className="space-y-2">
+                <FormLabel htmlFor="companyName">Company Name</FormLabel>
+                <Input id="companyName" placeholder="Acme Inc." {...field} />
+                <AnimatedErrorMessage message={form.formState.errors.companyName?.message} />
+              </div>
             )}
           />
-          <Button type="submit" disabled={isSubmitting}>Sign Up</Button>
+          <Button type="submit" className="w-full" disabled={isSubmitting}>
+            {isSubmitting ? "Signing Up..." : "Sign Up"}
+          </Button>
         </form>
       </Form>
-    </>
+      <div className="flex items-center justify-center space-x-2">
+        <span className="text-sm">Already have an account?</span>
+        <Link href="/login" className="text-sm hover:underline">
+          Sign in
+        </Link>
+      </div>
+    </div>
+  </div>
   )
 }
 
