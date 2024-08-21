@@ -6,8 +6,8 @@ import App from './App.tsx'
 import './index.css'
 
 const client = new Client({
-  // url: 'https://product-horse.fly.dev/graphql',
-  url: 'http://127.0.0.1:8000/graphql',
+  url: 'https://product-horse.fly.dev/graphql',
+  // url: 'http://127.0.0.1:8000/graphql',
   exchanges: [cacheExchange, fetchExchange],
   fetchOptions: () => {
     const token = tokenManager.get();
