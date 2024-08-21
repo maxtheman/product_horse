@@ -4,7 +4,7 @@
 __all__ = ['MAX_PART_SIZE', 'File', 'AudioFile', 'VideoFile', 'TextFile', 'FileSystemType', 'FilePathType', 'AbstractFileSystem',
            'LocalFileSystem', 'R2StorageClient']
 
-# %% ../nbs/01_filesystems.ipynb 3
+# %% ../nbs/01_filesystems.ipynb 4
 from typing import Generator, Optional, BinaryIO, IO, Any
 from pydantic import BaseModel
 from .db import User
@@ -15,11 +15,12 @@ import shutil
 from contextlib import contextmanager
 
 import io
+import os
 from storage_client import StorageClient
 
 from uuid import uuid4
 
-# %% ../nbs/01_filesystems.ipynb 4
+# %% ../nbs/01_filesystems.ipynb 5
 class File(BaseModel):
     uri: str
     content: Optional[bytes | io.BytesIO] = None
@@ -43,7 +44,7 @@ class VideoFile(File):
 class TextFile(File):
     pass
 
-# %% ../nbs/01_filesystems.ipynb 5
+# %% ../nbs/01_filesystems.ipynb 6
 class FileSystemType(Enum):
     LOCAL = "local"
     R2 = "r2"
@@ -147,7 +148,7 @@ class AbstractFileSystem(ABC):
         should be used as `with storage.temporary_user_directory(user) as tmp_dir:`"""
         raise NotImplementedError("This method should be implemented by subclasses")
 
-# %% ../nbs/01_filesystems.ipynb 6
+# %% ../nbs/01_filesystems.ipynb 7
 import os
 import tempfile
 
@@ -256,7 +257,7 @@ class LocalFileSystem(AbstractFileSystem):
         finally:
             shutil.rmtree(temp_dir)
 
-# %% ../nbs/01_filesystems.ipynb 8
+# %% ../nbs/01_filesystems.ipynb 9
 MAX_PART_SIZE = 10 * 1024 * 1024
 
 
@@ -349,6 +350,39 @@ class R2StorageClient(AbstractFileSystem):
             raise NotImplementedError("R2StorageClient only supports read mode ('rb')")
 
         return self.client.download_file(path)
+    
+    def sanitize_file_name(self, file_name: str) -> str:
+        # Implement file name sanitization
+        pass
+
+    def generate_file_key(self, file_name: str, user_id: str) -> str:
+        # Implement file key generation logic
+        return f"{self.base_path}/{user_id}/{file_name}"
+
+    async def file_exists(self, file_key: str) -> bool:
+        # Check if a file exists in R2
+        try:
+            await self.client.get_file_metadata(file_key)
+            return True
+        except Exception:
+            return False
+
+    def generate_unique_file_name(self, original_name: str, user_id: str) -> str:
+        base_name, extension = os.path.splitext(original_name)
+        sanitized_base = self.sanitize_file_name(base_name)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        unique_name = f"{sanitized_base}_{timestamp}{extension}"
+        return unique_name
+
+    async def get_unique_file_key(self, original_name: str, user_id: str) -> str:
+        unique_name = self.generate_unique_file_name(original_name, user_id)
+        file_key = self.generate_file_key(unique_name, user_id)
+        
+        while await self.file_exists(file_key):
+            unique_name = self.generate_unique_file_name(original_name, user_id)
+            file_key = self.generate_file_key(unique_name, user_id)
+        
+        return file_key
     
     @contextmanager
     def temporary_user_directory(self, user: User) -> Generator[str, None, None]:

@@ -1,5 +1,14 @@
+import sys
+import os
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from storage_client.src import AuthenticatedClient
-from storage_client.src.api.default import put_files, get_files, post_files, get_download_file_key_token
+from storage_client.src.api.default import (
+    put_files,
+    get_files,
+    post_files,
+    get_download_file_key_token,
+)
 from storage_client.src.models import (
     PutFilesBody,
     Visibility,
@@ -7,7 +16,7 @@ from storage_client.src.models import (
     R2MultipartUploadResponse,
     R2UploadedPartBody,
     R2UploadedPart,
-    GetDownloadFileKeyTokenResponse200
+    GetDownloadFileKeyTokenResponse200,
 )
 from storage_client.src.types import File
 import base64
@@ -72,9 +81,11 @@ async def chunk_reader(
         yield chunk
 
 
-file = requests.get("https://github.com/AssemblyAI-Examples/audio-examples/raw/main/20230607_me_canadian_wildfires.mp3")
+file = requests.get(
+    "https://github.com/AssemblyAI-Examples/audio-examples/raw/main/20230607_me_canadian_wildfires.mp3"
+)
 
-PATH_TO_BIG_FILE = ... # need to find one
+PATH_TO_BIG_FILE = ...  # need to find one
 
 TEST_LOCAL_FILE = "20230607_me_canadian_wildfires.mp3"
 
@@ -83,7 +94,7 @@ with open(TEST_LOCAL_FILE, "wb") as f:
 
 TEST_BIG_FILE = False
 
-url = os.getenv("BASE_URL")
+url = "http://localhost:8787"
 if not url:
     raise Exception("BASE_URL is not set")
 
@@ -122,7 +133,8 @@ else:
 get_specific_file = get_files.sync(client=client, key=test_key)
 
 start_multi_part_upload = post_files.sync(
-    client=client, body=FileCreateStartBody(key=test_key_2, visibility=Visibility.PUBLIC)
+    client=client,
+    body=FileCreateStartBody(key=test_key_2, visibility=Visibility.PUBLIC),
 )
 if not isinstance(start_multi_part_upload, R2MultipartUploadResponse):
     print(start_multi_part_upload)
@@ -169,14 +181,12 @@ if TEST_BIG_FILE:
     if not isinstance(big_file_start, R2MultipartUploadResponse):
         raise Exception("No upload id returned")
 
-
-
     async def upload_big_file():
         async def upload_chunk(chunk: bytes, part_number: int):
             upload_file_part = await put_files.asyncio_detailed(
                 client=client,
                 body=PutFilesBody(
-                    key=test_key_3, 
+                    key=test_key_3,
                     upload_id=big_file_start.upload_id,
                     part=part_number,
                     file=File(
@@ -190,13 +200,15 @@ if TEST_BIG_FILE:
                 print(upload_file_part)
                 raise Exception(f"No part returned for part {part_number}")
             return R2UploadedPartBody(
-                etag=upload_file_part.parsed.etag, part_number=upload_file_part.parsed.part_number
+                etag=upload_file_part.parsed.etag,
+                part_number=upload_file_part.parsed.part_number,
             )
 
         chunks = [chunk async for chunk in chunk_reader(big_file_object, MAX_PART_SIZE)]
-        parts = await asyncio.gather(*[upload_chunk(chunk, i+1) for i, chunk in enumerate(chunks)])
+        parts = await asyncio.gather(
+            *[upload_chunk(chunk, i + 1) for i, chunk in enumerate(chunks)]
+        )
         return parts
-
 
     parts = asyncio.run(upload_big_file())
 

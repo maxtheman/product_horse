@@ -5,10 +5,9 @@ __all__ = ['AudioEditor', 'save_mp4_animation_to_file', 'put_words_over_video_su
            'render_clips', 'create_video_from_clips', 'filter_clips_by_utterance_segments',
            'create_video_from_utterances']
 
-# %% ../nbs/03_audio_video.ipynb 4
+# %% ../nbs/03_audio_video.ipynb 5
 from typing import List, Tuple, cast, Union, Sequence
 from pathlib import Path
-import os
 from moviepy.editor import (  # type: ignore
     VideoFileClip,
     AudioFileClip,
@@ -53,7 +52,7 @@ import tempfile
 if not os.getenv("DATABASE_URL"):
     load_dotenv(dotenv_path="../.env.local")
 
-# %% ../nbs/03_audio_video.ipynb 8
+# %% ../nbs/03_audio_video.ipynb 9
 from product_horse.db import (
     SqlModelDatabase,
     UnvalidatedWord,
@@ -65,7 +64,7 @@ from product_horse.db import (
     PermissionLevel,
 )
 
-# %% ../nbs/03_audio_video.ipynb 9
+# %% ../nbs/03_audio_video.ipynb 10
 class AudioEditor:
     api_key: str | None = None
 
@@ -164,7 +163,7 @@ class AudioEditor:
         # add later
         pass
 
-# %% ../nbs/03_audio_video.ipynb 16
+# %% ../nbs/03_audio_video.ipynb 17
 def save_mp4_animation_to_file(
     audio_path: str,
     output_path: str,
@@ -205,7 +204,7 @@ def save_mp4_animation_to_file(
         size=size,
     )
 
-# %% ../nbs/03_audio_video.ipynb 18
+# %% ../nbs/03_audio_video.ipynb 19
 def put_words_over_video_subset(
     file_path: str,
     words: Sequence[Word],
@@ -306,7 +305,7 @@ def put_words_over_video_subset(
         final_clip = final_clip.set_duration(video_clip.duration)  # type: ignore
     return final_clip
 
-# %% ../nbs/03_audio_video.ipynb 19
+# %% ../nbs/03_audio_video.ipynb 20
 def write_video(
     video_path: str, video_clip: VideoFileClip | VideoClip | CompositeVideoClip
 ):
@@ -325,7 +324,7 @@ def write_video(
         console.print(e, style="red")
         raise e
 
-# %% ../nbs/03_audio_video.ipynb 22
+# %% ../nbs/03_audio_video.ipynb 23
 def render_clip(
     clip: Clip,
     temp_directory: str,
@@ -417,7 +416,7 @@ def render_clip(
         raise e
     return word_clip
 
-# %% ../nbs/03_audio_video.ipynb 23
+# %% ../nbs/03_audio_video.ipynb 24
 async def render_clips(
     clip_list: Sequence[Clip],
     temp_server_directory: str,
@@ -469,7 +468,7 @@ async def render_clips(
             final_clips.append(final_clip)
     return final_clips
 
-# %% ../nbs/03_audio_video.ipynb 27
+# %% ../nbs/03_audio_video.ipynb 28
 def create_video_from_clips(
     clips: Sequence[Clip] | List[VideoClip | CompositeVideoClip],
     video: Video,
@@ -503,7 +502,7 @@ def create_video_from_clips(
         raise e
     return temp_file_path
 
-# %% ../nbs/03_audio_video.ipynb 29
+# %% ../nbs/03_audio_video.ipynb 30
 def filter_clips_by_utterance_segments(
     clips: list[CreateClip], utterance_segments: list[UtteranceSegment]
 ) -> list[CreateClip]:
@@ -530,7 +529,7 @@ def filter_clips_by_utterance_segments(
 
     return filtered_clips
 
-# %% ../nbs/03_audio_video.ipynb 32
+# %% ../nbs/03_audio_video.ipynb 33
 async def create_video_from_utterances(
     db: AbstractDatabase[DBType],
     remote_file_system: AbstractFileSystem,

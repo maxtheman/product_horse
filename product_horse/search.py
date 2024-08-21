@@ -4,7 +4,7 @@
 __all__ = ['get_nodes_from_transcripts', 'embed_and_augment_nodes', 'get_node', 'ExtendedQueryBundle', 'TranscriptRetriever',
            'TranscriptIndex', 'setup_vector_db', 'SearchEngine']
 
-# %% ../nbs/05_search.ipynb 3
+# %% ../nbs/05_search.ipynb 4
 from typing import Any, List, Sequence, Set, Optional, Dict, Coroutine, Tuple
 from product_horse.db import (
     SqlModelDatabase,
@@ -51,7 +51,7 @@ from dotenv import load_dotenv
 if not os.getenv("DATABASE_URL"):
     load_dotenv(dotenv_path="../.env.local")
 
-# %% ../nbs/05_search.ipynb 5
+# %% ../nbs/05_search.ipynb 6
 async def get_nodes_from_transcripts(
     transcripts: Sequence[Transcription],
 ) -> List[TextNode]:
@@ -124,7 +124,7 @@ async def get_nodes_from_transcripts(
     all_nodes = [*reversed_child_nodes]
     return all_nodes
 
-# %% ../nbs/05_search.ipynb 8
+# %% ../nbs/05_search.ipynb 9
 def embed_and_augment_nodes(
     nodes: List[TextNode],
 ) -> Coroutine[Any, Any, Sequence[BaseNode]]:
@@ -140,7 +140,7 @@ def embed_and_augment_nodes(
     )
     return pipeline.arun(nodes=nodes, in_place=False)
 
-# %% ../nbs/05_search.ipynb 10
+# %% ../nbs/05_search.ipynb 11
 def get_node(vector_store: VectorStore, node_id: str):
     query = VectorStoreQuery(
         node_ids=[node_id]
@@ -151,7 +151,7 @@ def get_node(vector_store: VectorStore, node_id: str):
         raise ValueError(f"Node {node_id} not found")
     return node
 
-# %% ../nbs/05_search.ipynb 13
+# %% ../nbs/05_search.ipynb 14
 class ExtendedQueryBundle(QueryBundle):
     query_str: str
     transcription_ids: List[str]
@@ -474,7 +474,7 @@ class TranscriptIndex(BaseIndex[IndexDict]):
             **kwargs,
         )
 
-# %% ../nbs/05_search.ipynb 14
+# %% ../nbs/05_search.ipynb 15
 def setup_vector_db(connection_string: str):
     # Get connection string from environment variable
     if not connection_string:
@@ -515,7 +515,7 @@ def setup_vector_db(connection_string: str):
     print(f"New vector database URL: {vector_db_url}")
     return vector_db_url
 
-# %% ../nbs/05_search.ipynb 16
+# %% ../nbs/05_search.ipynb 17
 class SearchEngine:
     """Search engine for transcripts.
     Usage:

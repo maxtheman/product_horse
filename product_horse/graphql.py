@@ -439,7 +439,7 @@ class Query:
     def get_all_videos(self, info: strawberry.Info) -> Sequence[Video]:
         return database.as_employee(info.context.employee).get_all_videos()  # type: ignore
 
-# %% ../nbs/09_graphql.ipynb 14
+# %% ../nbs/09_graphql.ipynb 15
 @strawberry.type
 class Mutation:
     @strawberry.mutation
@@ -637,7 +637,7 @@ class Mutation:
         )
         return video  # type: ignore
 
-# %% ../nbs/09_graphql.ipynb 15
+# %% ../nbs/09_graphql.ipynb 16
 async def get_context() -> Context:
     return Context()
 

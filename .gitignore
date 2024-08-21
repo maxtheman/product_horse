@@ -22,6 +22,7 @@ chroma_db/chroma.sqlite3
 *.db
 *.csv
 *.png
+*.mp3
 
 target/*
 target
