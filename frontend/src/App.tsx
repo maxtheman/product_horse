@@ -947,9 +947,11 @@ const GetUtterancesForm = () => {
                   isSubmitting={isSubmitting || utterancesResult.fetching}
                 >
                   {utterancesResult.fetching ? <>
-                    <Search className="w-4 h-4 mr-2" />
                     Loading Utterances
-                  </> : isSubmitting ? "Working" : "Get Utterances"}
+                  </> : isSubmitting ? "Working" : <>
+                    <Search className="w-4 h-4 mr-2" />
+                    Get Utterances
+                  </>}
                 </PulsingButton>
               </form>
             </Form>

@@ -19,4 +19,4 @@ binding='SIGNED_URL_KEYS'
 id='82a63d66fc1142b894a814197e76dc6d'
 
 [vars]
-SECRET = "secrasdfadsfasdfafsdasdfet" #must be same as app secret
+SECRET = "secrasdfadsfasdfafsdasdfet" #must be same as app secret, make sure to set when deploying

@@ -31,7 +31,7 @@ export const LOGIN_MUTATION = gql`
         errors {
           field
           message
-        }d
+        }
       }
     }
   }

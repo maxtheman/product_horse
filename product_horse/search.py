@@ -219,7 +219,7 @@ class TranscriptRetriever(BaseRetriever):
         return None
 
     def _get_adjacent_nodes(
-        self, node: BaseNode, seconds_buffer: int = 10
+        self, node: BaseNode, seconds_buffer: int = 10, max_nodes: int = 5
     ) -> List[BaseNode]:
         """Get adjacent nodes in the transcript within a specified time window."""
         adjacent_nodes: List[BaseNode] = [node]
@@ -231,54 +231,55 @@ class TranscriptRetriever(BaseRetriever):
         # Calculate the time window boundaries
         start_window_ms = original_start_ms - seconds_buffer * 1000
         end_window_ms = original_end_ms + seconds_buffer * 1000
+
         # Retrieve previous nodes within the time window
-        prev_node_id = node.relationships.get(NodeRelationship.PREVIOUS)
-        while prev_node_id:
-            prev_node = self._get_nodes_based_on_relationship(
-                node=node, relationship=NodeRelationship.PREVIOUS
-            )
-            if prev_node:
-                prev_node_metadata = prev_node.metadata
-                if prev_node_metadata["end_seconds"] < start_window_ms:
-                    break
-                adjacent_nodes.insert(0, prev_node)
-                prev_node_id = prev_node.relationships.get(NodeRelationship.PREVIOUS)
-                node = prev_node
-            else:
+        prev_node = node
+        while len(adjacent_nodes) < max_nodes:
+            prev_node_id = prev_node.relationships.get(NodeRelationship.PREVIOUS)
+            if not prev_node_id:
                 break
+            prev_node = self._get_nodes_based_on_relationship(
+                node=prev_node, relationship=NodeRelationship.PREVIOUS
+            )
+            if not prev_node:
+                break
+            if prev_node.metadata["end_seconds"] < start_window_ms:
+                break
+            adjacent_nodes.insert(0, prev_node)
 
         # Retrieve next nodes within the time window
-        next_node_id = node.relationships.get(NodeRelationship.NEXT)
-        while next_node_id:
-            next_node = self._get_nodes_based_on_relationship(
-                node=node, relationship=NodeRelationship.NEXT
-            )
-            if next_node:
-                if next_node.metadata["start_seconds"] > end_window_ms:
-                    break
-                adjacent_nodes.append(next_node)
-                next_node_id = next_node.relationships.get(NodeRelationship.NEXT)
-                node = next_node
-            else:
+        next_node = node
+        while len(adjacent_nodes) < max_nodes:
+            next_node_id = next_node.relationships.get(NodeRelationship.NEXT)
+            if not next_node_id:
                 break
-        return adjacent_nodes
+            next_node = self._get_nodes_based_on_relationship(
+                node=next_node, relationship=NodeRelationship.NEXT
+            )
+            if not next_node:
+                break
+            if next_node.metadata["start_seconds"] > end_window_ms:
+                break
+            adjacent_nodes.append(next_node)
+
+        return adjacent_nodes[:max_nodes]  # Ensure we don't exceed max_node
 
     def _get_all_transcript_nodes(
-        self, node_with_score: NodeWithScore, seconds_buffer: int = 10
-    ) -> List[NodeWithScore]:
+            self, node_with_score: NodeWithScore, seconds_buffer: int = 3, max_nodes: int = 5
+        ) -> List[NodeWithScore]:
         """Retrieve all nodes in a transcript if they have the same transcript_id and the node has a relationship, up to a certain # of seconds"""
         adjacent_nodes: List[NodeWithScore] = []
         current_node = node_with_score.node
         if len(current_node.relationships) > 0:
             adjacent_node_list = self._get_adjacent_nodes(
-                current_node, seconds_buffer=seconds_buffer
+                current_node, seconds_buffer=seconds_buffer, max_nodes=max_nodes
             )
             adjacent_node_list = self._check_query_result(
                 result=VectorStoreQueryResult(nodes=adjacent_node_list)
             )
             if not adjacent_node_list:
                 return adjacent_nodes  # []
-            adjacent_nodes.extend(adjacent_node_list)
+            adjacent_nodes.extend(adjacent_node_list[:max_nodes])  # Limit the number of nodes
             return adjacent_nodes  # happy path
         else:
             return adjacent_nodes  # []
@@ -286,6 +287,7 @@ class TranscriptRetriever(BaseRetriever):
     def _retrieve(self, query_bundle: ExtendedQueryBundle) -> List[NodeWithScore]:
         """Retrieve nodes given query."""
         self.embed_model = OpenAIEmbedding()
+        print('model embedded')
         metadata_filters = MetadataFilters(
             condition=FilterCondition.OR,
             filters=[
@@ -293,7 +295,9 @@ class TranscriptRetriever(BaseRetriever):
                 for transcription_id in query_bundle.transcription_ids
             ],
         )
+        print('metadata_filters')
         query_embedding = self.embed_model.get_query_embedding(query_bundle.query_str)
+        print('query_embedding')
         query_bundle.embedding = query_embedding
         vector_store_query = VectorStoreQuery(
             query_str=query_bundle.query_str,
@@ -301,27 +305,33 @@ class TranscriptRetriever(BaseRetriever):
             similarity_top_k=query_bundle.similarity_top_k,
             filters=metadata_filters,
         )
+        print('vector_store_query')
         result = self.vector_store.query(vector_store_query)
+        print('resulted')
         nodes_list = self._check_query_result(result)
+        print('result checked')
 
-        all_relevant_nodes: List[NodeWithScore] = []
-        seen_node_ids: Set[str] = set()
-        for node_with_score in nodes_list:
-            all_nodes_in_transcript = self._get_all_transcript_nodes(
-                node_with_score, seconds_buffer=query_bundle.seconds_buffer
-            )
-            for node in all_nodes_in_transcript:
-                if node.node.id_ not in seen_node_ids:
-                    seen_node_ids.add(node.node.id_)
-                    all_relevant_nodes.append(node)
+        # all_relevant_nodes: List[NodeWithScore] = []
+        # seen_node_ids: Set[str] = set()
+        # max_nodes_per_transcript = 5  # You can adjust this value or make it a parameter
 
-        all_relevant_nodes.sort(
-            key=lambda x: (
-                x.node.metadata["transcript_id"],
-                x.node.metadata["start_seconds"],
-            )
-        )
-        return all_relevant_nodes
+        # for node_with_score in nodes_list:
+        #     print('node_with_score')
+        #     all_nodes_in_transcript = self._get_all_transcript_nodes(
+        #         node_with_score, 
+        #         seconds_buffer=query_bundle.seconds_buffer,
+        #         max_nodes=max_nodes_per_transcript
+        #     )
+        #     for node in all_nodes_in_transcript:
+        #         if node.node.id_ not in seen_node_ids:
+        #             seen_node_ids.add(node.node.id_)
+        #             all_relevant_nodes.append(node)
+        #             if len(all_relevant_nodes) >= query_bundle.similarity_top_k:
+        #                 break
+        #     if len(all_relevant_nodes) >= query_bundle.similarity_top_k:
+        #         break
+        # print('all_relevant_nodes, post-sort')
+        return nodes_list
 
     async def _aretrieve(self, query_bundle: QueryBundle) -> List[NodeWithScore]:
         """Asynchronously retrieve nodes given query.

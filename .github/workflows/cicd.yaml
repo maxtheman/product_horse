@@ -41,6 +41,10 @@ jobs:
     needs: test
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
+    paths:
+      - 'product_horse/src/**'
+      - 'product_horse/nbs/*'
+      - 'product_horse/fly.toml'
     steps:
       - uses: actions/checkout@v4
       - uses: superfly/flyctl-actions/setup-flyctl@master
