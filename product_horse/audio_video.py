@@ -232,6 +232,7 @@ def put_words_over_video_subset(
     # start of this video_clip should be used as 0
     try:  # catching exceptions on VideoFileClip creation
         if end > 0:
+            print("file_path", file_path)
             video_clip_full = VideoFileClip(
                 file_path, target_resolution=target_resolution
             )
@@ -322,6 +323,7 @@ def write_video(
             preset="ultrafast",
             codec="libx264",
             threads=os.cpu_count(),
+            ffmpeg_params=['-movflags', 'faststart']
         )
         return True
     except Exception as e:
@@ -337,23 +339,7 @@ def render_clip(
     """Renders a clip from utterances for a given transcript.
     If not all words are used, only applicable words should be added to UtteranceSegment, and custom_start/custom_end should be equal to the start/end of the first/last words.
     If all words are used, start/end should be equal to the start/end of the entire video."""
-    file_extension = Path(local_path_for_clip).suffix
-    file_path_for_clip = f"{temp_directory}/{clip.id}{file_extension}"
     mp4_animation_path = f"{temp_directory}/{clip.id}.mp4"
-    # check that you can write to the temp directory
-    try:
-        with open(temp_directory + "/test.txt", "w") as f:
-            f.write("test")
-        with open(mp4_animation_path, "w") as f:
-            f.write("test")
-        with open(file_path_for_clip, "rb") as f:
-            f.read(2)
-            f.seek(0)
-    except Exception as e:
-        raise ValueError(f"File {file_path_for_clip} does not exist: {e}")
-    finally:
-        print("all files exist")
-        os.remove(temp_directory + "/test.txt")
     if len(clip.words) == 0:
         raise ValueError("No words to render")
     first_word = clip.words[0]
@@ -371,15 +357,15 @@ def render_clip(
     safe_end = min(clip.end_ms / 1000, clip.duration)
     safe_start = min(clip.start_ms / 1000, safe_end)
     if clip.video_type is not VideoType.video:
-        """handle the audio file conversion to video"""
+        print("using audio")
         if (
             clip.duration < 900
         ):  # if you remove this you will get failures with exit status 254 from ffmeg:
             raise ValueError(
-                f"Duration of {file_path_for_clip} is too short to render a video"
+                f"Duration of {local_path_for_clip} is too short to render a video"
             )
         try:
-            working_clip: AudioFileClip = AudioFileClip(file_path_for_clip).subclip(
+            working_clip: AudioFileClip = AudioFileClip(local_path_for_clip).subclip(
                 safe_start, safe_end
             )  # type: ignore
         except Exception as e:
@@ -388,7 +374,7 @@ def render_clip(
         working_clip.write_audiofile(temp_directory + f"/{clip.id}.mp3")
         working_clip.close()
         save_mp4_animation_to_file(
-            audio_path=file_path_for_clip,
+            audio_path=local_path_for_clip,
             output_path=mp4_animation_path,
             tmp_directory=temp_directory,
             duration=clip.duration_ms/1000,
@@ -404,8 +390,9 @@ def render_clip(
             position="center",
         )
     else:
+        print("using video")
         word_clip = put_words_over_video_subset(
-            file_path=file_path_for_clip,
+            file_path=local_path_for_clip,
             words=clip.words,
             target_resolution=size,
             start=safe_start,
@@ -572,7 +559,6 @@ async def create_video_from_utterances(
     clips_and_metrics = db.as_employee(employee).prepare_clips_from_metadata(
         transcript_metadatas, employee, hide_metadata=False
     )
-    print(utterance_segments)
 
     filtered_clips = filter_clips_by_utterance_segments(
         clips_and_metrics.clips, utterance_segments

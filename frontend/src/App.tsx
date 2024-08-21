@@ -659,7 +659,7 @@ const SaveFilesForm = ({ userId }: { userId: string }) => {
         description: "Your upload is ready to create a video.",
         action: {
           label: "Create Video",
-          onClick: () => navigate(`/videos/${result.data.saveFiles.id}`),
+          onClick: () => navigate(`/utterances`),
         },
       });
     }
