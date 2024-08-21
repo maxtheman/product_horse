@@ -207,7 +207,6 @@ class StorageClient:
             body=parts,
             visibility=visibility,
         )
-        print("complete_response", complete_response)
         return complete_response.parsed
 
     def download_file(self, key: str) -> BinaryIO:

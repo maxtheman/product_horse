@@ -458,7 +458,6 @@ async def render_clips(
                 temp_server_directory,
                 local_path_for_clip=temp_file_path,
             )
-            final_clips.append(final_clip)
             if clip.hide_metadata:
                 pass
             else:
@@ -519,25 +518,37 @@ def filter_clips_by_utterance_segments(
 ) -> list[CreateClip]:
     """
     Filter clips by utterance segments
-    You get one clip per utterance segment
+    You get one clip per utterance segment, containing only the words between
+    the segment's start and end words (inclusive).
     """
     filtered_clips: list[CreateClip] = []
     for segment in utterance_segments:
         for clip in clips:
-            segment_word_ids = {w.id for w in segment.words}
-            matching_words = [w for w in clip.words if w.id in segment_word_ids]
-
-            if matching_words:
-                filtered_clip = clip.model_copy(
-                    update={
-                        "words": matching_words,
-                        "start_ms": segment.start,
-                        "end_ms": segment.end,
-                    }
-                )
-                filtered_clips.append(filtered_clip)
-                break  # Move to the next segment after finding a matching clip
-
+            start_word = segment.segment_start_word
+            end_word = segment.segment_end_word
+            
+            if start_word is None or end_word is None: #type: ignore
+                continue
+            
+            # Find the indices of start and end words in the clip
+            start_index = next((i for i, w in enumerate(clip.words) if w.id == start_word.id), None)
+            end_index = next((i for i, w in enumerate(clip.words) if w.id == end_word.id), None)
+            
+            if start_index is not None and end_index is not None:
+                # Include words from start_index to end_index (inclusive)
+                matching_words = clip.words[start_index:end_index+1]
+                
+                if matching_words:
+                    filtered_clip = clip.model_copy(
+                        update={
+                            "words": matching_words,
+                            "start_ms": matching_words[0].start,
+                            "end_ms": matching_words[-1].end,
+                        }
+                    )
+                    print('words kept',len(filtered_clip.words))
+                    filtered_clips.append(filtered_clip)
+                    break  # Move to the next segment after finding a matching clip
     return filtered_clips
 
 # %% ../nbs/03_audio_video.ipynb 33
@@ -561,6 +572,7 @@ async def create_video_from_utterances(
     clips_and_metrics = db.as_employee(employee).prepare_clips_from_metadata(
         transcript_metadatas, employee, hide_metadata=False
     )
+    print(utterance_segments)
 
     filtered_clips = filter_clips_by_utterance_segments(
         clips_and_metrics.clips, utterance_segments
@@ -589,7 +601,6 @@ async def create_video_from_utterances(
     )
 
     saved_clips = db.as_employee(employee).save_clips(filtered_clips, video.id)
-
     if video.fps is None or video.resolution_x is None or video.resolution_y is None:
         raise ValueError("Video fps, resolution_x, and resolution_y must be set")
 

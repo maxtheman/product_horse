@@ -818,6 +818,7 @@ const GetUtterancesForm = () => {
               label: "View Video",
               onClick: () => navigate(`/videos/${result.data.createVideoFromUtterances.id}`),
             },
+            duration: 5000
           });
         }
         if (result.error) {
@@ -1065,75 +1066,15 @@ const VideoPlayer = ({ id }: { id: string }) => {
     variables: { videoId: id }
   });
   const [error, setError] = useState<string | null>(null);
-  const [useNativePlayer, setUseNativePlayer] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const [volume, setVolume] = useState(1);
-  const [isMuted, setIsMuted] = useState(false);
-  const videoRef = useRef<HTMLVideoElement>(null);
   const [, navigate] = useLocation();
 
   useEffect(() => {
     setError(null);
-    setUseNativePlayer(false);
   }, [result]);
-
-  const handlePlayPause = () => {
-    if (videoRef.current) {
-      if (isPlaying) {
-        videoRef.current.pause();
-      } else {
-        videoRef.current.play();
-      }
-      setIsPlaying(!isPlaying);
-    }
-  };
-
-  const handleTimeUpdate = () => {
-    if (videoRef.current) {
-      setCurrentTime(videoRef.current.currentTime);
-    }
-  };
-
-  const handleSeek = (value: number[]) => {
-    if (videoRef.current) {
-      videoRef.current.currentTime = value[0];
-      setCurrentTime(value[0]);
-    }
-  };
-
-  const handleVolumeChange = (value: number[]) => {
-    const newVolume = value[0];
-    setVolume(newVolume);
-    if (videoRef.current) {
-      videoRef.current.volume = newVolume;
-    }
-    setIsMuted(newVolume === 0);
-  };
-
-  const toggleMute = () => {
-    if (videoRef.current) {
-      videoRef.current.muted = !isMuted;
-      setIsMuted(!isMuted);
-      if (isMuted) {
-        setVolume(videoRef.current.volume);
-      } else {
-        setVolume(0);
-      }
-    }
-  };
-
-  const formatTime = (time: number) => {
-    const minutes = Math.floor(time / 60);
-    const seconds = Math.floor(time % 60);
-    return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
-  };
 
   const handleError = (e: any) => {
     console.error('Video playback error:', e);
     setError(`Failed to load the video: ${e.message || 'Unknown error'}`);
-    setUseNativePlayer(true);
   };
 
   if (result.fetching) return (
@@ -1166,53 +1107,17 @@ const VideoPlayer = ({ id }: { id: string }) => {
             <div className="space-y-4">
               <div className="relative aspect-video">
                 <video
-                  ref={videoRef}
                   src={signedUrl}
                   className="w-full h-full"
-                  onTimeUpdate={handleTimeUpdate}
-                  onLoadedMetadata={() => setDuration(videoRef.current?.duration || 0)}
+                  controls
                   onError={handleError}
                   crossOrigin="anonymous"
-                />
-              </div>
-              <div className="flex items-center space-x-2">
-                <Button size="icon" variant="ghost" onClick={handlePlayPause}>
-                  {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                </Button>
-                <span className="text-sm">{formatTime(currentTime)}</span>
-                <Slider
-                  min={0}
-                  max={duration}
-                  step={1}
-                  value={[currentTime]}
-                  onValueChange={handleSeek}
-                  className="w-full"
-                />
-                <span className="text-sm">{formatTime(duration)}</span>
-                <Button size="icon" variant="ghost" onClick={toggleMute}>
-                  {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
-                </Button>
-                <Slider
-                  min={0}
-                  max={1}
-                  step={0.1}
-                  value={[volume]}
-                  onValueChange={handleVolumeChange}
-                  className="w-24"
-                />
+                ></video>
               </div>
             </div>
           )}
           {error && <AnimatedErrorMessage message={error} />}
         </CardContent>
-        {error && (
-          <CardFooter>
-            <Button onClick={() => setUseNativePlayer(!useNativePlayer)}>
-              <RotateCcw className="w-4 h-4 mr-2" />
-              Try {useNativePlayer ? 'Custom' : 'Native'} Player
-            </Button>
-          </CardFooter>
-        )}
       </Card>
     </div>
   );

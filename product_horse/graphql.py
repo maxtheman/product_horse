@@ -600,7 +600,6 @@ class Mutation:
         if user is None:
             raise Exception("User not found")
         final_destination = await r2.get_unique_file_key(f"{title}.mp4", str(user.id))
-        print(f"Final destination: {final_destination}")
         video = await create_video(
             database,
             remote_file_system=r2,

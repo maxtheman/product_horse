@@ -49,19 +49,19 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
   
-  deploy-cf-worker:
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install dotenvx
-        run: curl -sfS https://dotenvx.sh/install.sh | sh
-      - name: Install Wrangler
-        run: npm install -g wrangler
-      - name: Deploy CF Worker
-        run: |
-          cd workers
-          dotenvx run -f ../.env.ci -- npx wrangler deploy
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          DOTENV_PRIVATE_KEY_CI: ${{ secrets.DOTENV_PRIVATE_KEY_CI }}
+  # deploy-cf-worker:
+  #   if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - name: Install dotenvx
+  #       run: curl -sfS https://dotenvx.sh/install.sh | sh
+  #     - name: Install Wrangler
+  #       run: npm install -g wrangler
+  #     - name: Deploy CF Worker
+  #       run: |
+  #         cd workers
+  #         dotenvx run -f ../.env.ci -- npx wrangler deploy
+  #       env:
+  #         CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+  #         DOTENV_PRIVATE_KEY_CI: ${{ secrets.DOTENV_PRIVATE_KEY_CI }}

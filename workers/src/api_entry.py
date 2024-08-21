@@ -567,6 +567,9 @@ async def on_fetch(request: WorkerRequestType, env: Env):
                         headers.set("Content-Disposition", f'filename="{file.key}"')
                         readable_stream = file.to_py(default_converter=get_body)
                         headers.set("Content-Type", "application/octet-stream")
+                        headers.set("Access-Control-Allow-Origin", "*")
+                        headers.set("Access-Control-Allow-Methods", "GET")
+                        headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-API-Key")
                         return Response.new(
                             readable_stream, headers=headers, status=200
                         )
