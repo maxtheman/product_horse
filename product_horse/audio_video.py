@@ -16,6 +16,8 @@ from moviepy.editor import (  # type: ignore
     VideoClip,
     concatenate_videoclips,  # type: ignore
 )
+import os
+import shutil
 from seewav import visualize  # type: ignore
 import assemblyai as aai  # type: ignore
 import requests
@@ -191,6 +193,8 @@ def save_mp4_animation_to_file(
     `bg_color` is the rgb color to use for the background.
     `size` is the `(width, height)` in pixels to generate.
     """
+    if size == (0, 0):
+        raise ValueError("Size must be provided")
     visualize(
         audio=Path(audio_path),
         out=Path(output_path),
@@ -333,17 +337,23 @@ def render_clip(
     """Renders a clip from utterances for a given transcript.
     If not all words are used, only applicable words should be added to UtteranceSegment, and custom_start/custom_end should be equal to the start/end of the first/last words.
     If all words are used, start/end should be equal to the start/end of the entire video."""
-    file_path_for_clip = local_path_for_clip
-    mp4_animation_path = temp_directory + f"/{clip.id}.mp4"
+    file_extension = Path(local_path_for_clip).suffix
+    file_path_for_clip = f"{temp_directory}/{clip.id}{file_extension}"
+    mp4_animation_path = f"{temp_directory}/{clip.id}.mp4"
     # check that you can write to the temp directory
     try:
         with open(temp_directory + "/test.txt", "w") as f:
             f.write("test")
-        if not os.path.exists(file_path_for_clip):
-            raise ValueError(f"File {file_path_for_clip} does not exist")
+        with open(mp4_animation_path, "w") as f:
+            f.write("test")
+        with open(file_path_for_clip, "rb") as f:
+            f.read(2)
+            f.seek(0)
     except Exception as e:
-        print(e)
-        raise e
+        raise ValueError(f"File {file_path_for_clip} does not exist: {e}")
+    finally:
+        print("all files exist")
+        os.remove(temp_directory + "/test.txt")
     if len(clip.words) == 0:
         raise ValueError("No words to render")
     first_word = clip.words[0]
@@ -381,9 +391,9 @@ def render_clip(
             audio_path=file_path_for_clip,
             output_path=mp4_animation_path,
             tmp_directory=temp_directory,
-            duration=clip.duration,
+            duration=clip.duration_ms/1000,
             rate=clip.fps,
-            size=size,
+            size=(size[1], size[0]), # weird resolution flipping
         )
         word_clip = put_words_over_video_subset(
             file_path=mp4_animation_path,
@@ -422,6 +432,7 @@ async def render_clips(
     temp_server_directory: str,
     temp_server_file_system: AbstractFileSystem,
     file_system_for_getting_data: AbstractFileSystem,
+    size: Tuple[int, int] = (0, 0),
 ) -> List[CompositeVideoClip | VideoClip]:
     """Renders clips, conditionally with metadata.
     Clips must be saved to DB before being passed to this function."""
@@ -429,18 +440,18 @@ async def render_clips(
     for clip in clip_list:
         if clip.file_path is None:
             raise ValueError("No file path to render")
-
+        if clip.resolution_x == 0 or clip.resolution_y == 0:
+            if size == (0, 0):
+                raise ValueError("Clip size is 0")
+            clip.resolution_x = size[0]
+            clip.resolution_y = size[1]
         with file_system_for_getting_data.file_stream(clip.file_path) as source_stream:
-            temp_file_path = f"{temp_server_directory}/{clip.id}.mp4"
+            file_extension = Path(clip.file_path).suffix
+            temp_file_path = f"{temp_server_directory}/{clip.id}{file_extension}"
             with temp_server_file_system.file_stream(
                 temp_file_path, mode="wb"
             ) as destination_stream:
-                chunk_size = 8192  # 8KB chunks, adjust as needed
-                while True:
-                    chunk = source_stream.read(chunk_size)
-                    if not chunk:
-                        break
-                    destination_stream.write(chunk)
+                shutil.copyfileobj(source_stream, destination_stream, length=8192)
 
             final_clip = render_clip(
                 clip,
@@ -462,7 +473,7 @@ async def render_clips(
                 metadata_banner = metadata_banner.set_position(
                     (0.05, 0.05),
                     relative=True,
-                ).set_duration(clip.duration / 1000)  # type: ignore - moviepy types are crappy
+                ).set_duration(clip.duration_ms/1000)  # type: ignore - moviepy types are crappy
                 final_clip = CompositeVideoClip([final_clip, metadata_banner])
                 final_clip.fps = clip.fps
             final_clips.append(final_clip)
@@ -539,6 +550,8 @@ async def create_video_from_utterances(
     utterance_segments: List[UtteranceSegment],
     final_destination: str,
     title: str,
+    size: Tuple[int, int] = (0, 0),
+    force_size: bool = False,
 ) -> Video:
     transcript_ids = list(set(str(u.transcription_id) for u in utterance_segments))
     transcript_metadatas = db.as_employee(
@@ -552,6 +565,16 @@ async def create_video_from_utterances(
     filtered_clips = filter_clips_by_utterance_segments(
         clips_and_metrics.clips, utterance_segments
     )
+
+    if size == (0, 0) and (clips_and_metrics.max_resolution_x, clips_and_metrics.max_resolution_y) != (0, 0):
+        size = (clips_and_metrics.max_resolution_x, clips_and_metrics.max_resolution_y)
+    elif size == (0, 0) and (clips_and_metrics.max_resolution_x, clips_and_metrics.max_resolution_y) == (0, 0):
+        raise ValueError("No size provided")
+    else:
+        size = (size[1], size[0])
+
+    if force_size:
+        size = (size[1], size[0])
 
     video = db.as_employee(employee).save_video(
         UnvalidatedVideo(
@@ -576,6 +599,7 @@ async def create_video_from_utterances(
             temp_directory,
             file_system_for_getting_data=remote_file_system,
             temp_server_file_system=local_file_system,
+            size=size,
         )
         with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as temp_file:
             temp_file_path = temp_file.name

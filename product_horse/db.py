@@ -11,7 +11,7 @@ __all__ = ['STRINGS_TO_SANITIZE', 'ValidString', 'ValidPath', 'T', 'P', 'DBType'
            'get_current_level', 'permission_required', 'read', 'write', 'admin', 'public', 'AbstractDatabase',
            'SqlModelDatabase', 'setup_test_db', 'create_default_company_and_employee', 'setup_production_db']
 
-# %% ../nbs/07_db.ipynb 3
+# %% ../nbs/07_db.ipynb 4
 from typing import (
     Any,
     List,
@@ -63,14 +63,14 @@ from dotenv import load_dotenv
 if not os.getenv("DATABASE_URL"):
     load_dotenv(dotenv_path="../.env.local")
 
-# %% ../nbs/07_db.ipynb 4
+# %% ../nbs/07_db.ipynb 5
 def validate_file_path(v: str) -> str:
     """Check that the path is valid according to regex"""
     if not re.match(r"^(\/[a-zA-Z0-9_-]+)+\/[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+$", v):
         raise ValueError(f"Path {v} is not valid")
     return v
 
-# %% ../nbs/07_db.ipynb 6
+# %% ../nbs/07_db.ipynb 7
 STRINGS_TO_SANITIZE = ["\x00"]
 
 
@@ -86,7 +86,7 @@ def sanitize_strings(v: str) -> str:
 ValidString = Annotated[str, BeforeValidator(sanitize_strings)]
 ValidPath = Annotated[ValidString, BeforeValidator(validate_file_path)]
 
-# %% ../nbs/07_db.ipynb 7
+# %% ../nbs/07_db.ipynb 8
 ### AUTH MODELS ###
 
 
@@ -137,7 +137,7 @@ class OrgBoundModel(SQLModel):
     company_id: UUID = Field(foreign_key="company.id")
     created_by_id: UUID = Field(foreign_key="employee.id")
 
-# %% ../nbs/07_db.ipynb 9
+# %% ../nbs/07_db.ipynb 10
 class UnvalidatedUser(OrgBoundModel):
     name: ValidString = Field(default=None)
     external_id: ValidString = Field(default=None)
@@ -421,7 +421,7 @@ class VideoMetrics:
     max_resolution_y: int
     clips: List[CreateClip]
 
-# %% ../nbs/07_db.ipynb 10
+# %% ../nbs/07_db.ipynb 11
 T = TypeVar("T")
 P = ParamSpec("P")
 
@@ -534,7 +534,7 @@ def public(
 ) -> Callable[Concatenate[DBType, P], T]:
     return permission_required(PermissionLevel.PUBLIC)(func)
 
-# %% ../nbs/07_db.ipynb 11
+# %% ../nbs/07_db.ipynb 12
 class AbstractDatabase(ABC, DatabaseProtocol, Generic[DBType]):
     """Abstract base class for database operations related to users, files, transcriptions, and schemas.
     Use Unvalidated Models to save raw user input, validation occurs on the model save
@@ -886,7 +886,7 @@ class AbstractDatabase(ABC, DatabaseProtocol, Generic[DBType]):
         """
         raise NotImplementedError
 
-# %% ../nbs/07_db.ipynb 14
+# %% ../nbs/07_db.ipynb 15
 TModelOut = TypeVar("TModelOut", bound=SQLModel)
 
 
@@ -1757,7 +1757,7 @@ class SqlModelDatabase(AbstractDatabase["SqlModelDatabase"]):
     def operations(self) -> "Operations":
         return self.Operations(self)
 
-# %% ../nbs/07_db.ipynb 16
+# %% ../nbs/07_db.ipynb 17
 from testcontainers.postgres import PostgresContainer  # type: ignore
 import os
 import subprocess
@@ -1807,7 +1807,7 @@ def create_default_company_and_employee(db: SqlModelDatabase) -> tuple[UUID, UUI
 
         return default_company.id, default_employee.id
 
-# %% ../nbs/07_db.ipynb 17
+# %% ../nbs/07_db.ipynb 18
 def setup_production_db(database_url: str):
     superuser_database = SqlModelDatabase(database_url=database_url)
     superuser_database.operations.create_all_tables()   
