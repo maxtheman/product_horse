@@ -441,6 +441,9 @@ class Query:
 # %% ../nbs/09_graphql.ipynb 14
 @strawberry.type
 class Mutation:
+    """
+    Mutations are the functions that change the state of the database.
+    """
     @strawberry.mutation
     def login(self, email: str, password: str) -> LoginResponse:
         employee = database_superuser.authenticate_employee(email, password)
