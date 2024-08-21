@@ -747,7 +747,7 @@ const SaveFilesForm = ({ userId }: { userId: string }) => {
                 )}
               />
               <PulsingButton type="submit" className="w-full" isSubmitting={isSubmitting}>
-                {isSubmitting ? "Uploading..." : <>
+                {isSubmitting ? "Uploading" : <>
                   <FileUp className="w-4 h-4 mr-2" />
                   Upload File
                 </>}
@@ -948,7 +948,7 @@ const GetUtterancesForm = () => {
                 >
                   {utterancesResult.fetching ? <>
                     <Search className="w-4 h-4 mr-2" />
-                    Loading Utterances...
+                    Loading Utterances
                   </> : isSubmitting ? "Working" : "Get Utterances"}
                 </PulsingButton>
               </form>
@@ -976,7 +976,7 @@ const GetUtterancesForm = () => {
                       className="w-full mt-4"
                     >
                       {isSubmitting
-                        ? "Creating Video..."
+                        ? "Creating Video"
                         : selectedUtterances.size === 0
                           ? "Select Utterances to Create a Video"
                           : "Create Video from Selected Utterances"}
