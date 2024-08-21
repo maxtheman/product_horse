@@ -15,7 +15,7 @@ import { Form, FormField, FormItem, FormLabel, FormControl } from "@/components/
 import { Checkbox } from "@/components/ui/checkbox"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card"
 import { useMutation, useQuery } from 'urql';
-import { useEffect, useCallback, useRef, useState } from "react";
+import { useEffect, useCallback, useState, useRef } from "react";
 import { z } from "zod"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm, Controller } from "react-hook-form"
@@ -46,7 +46,8 @@ import {
   Pause,
   RotateCcw,
   Volume2,
-  VolumeX
+  VolumeX,
+  LucideIcon
 } from "lucide-react"
 import { Slider } from "@/components/ui/slider"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -105,7 +106,7 @@ const AnimatedEllipsis = () => {
 }
 
 // Add this new component for the pulsing button
-const PulsingButton = ({ children, isSubmitting, ...props }) => {
+const PulsingButton = ({ children, isSubmitting, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { isSubmitting: boolean }) => {
   return (
     <Button
       {...props}
@@ -168,7 +169,7 @@ const EmptyState = ({ showAddUser = true, showUploadResearch = true, showAskQues
       <CardContent>
         <div className={`grid grid-cols-1 gap-4 ${gridColsClass()}`}>
           {showAddUser && (
-            <Button className="justify-between w-full" size="lg" variant={variantClasses()[0]} onClick={() => navigate("/new-user")}>
+            <Button className="justify-between w-full" size="lg" variant={variantClasses()[0] as "default" | "outline" | "secondary"} onClick={() => navigate("/new-user")}>
               <span className="flex items-center">
                 <UserPlus className="w-5 h-5 mr-2" />
                 Add New User
@@ -177,7 +178,7 @@ const EmptyState = ({ showAddUser = true, showUploadResearch = true, showAskQues
             </Button>
           )}
           {showUploadResearch && (
-            <Button className="justify-between w-full" variant={variantClasses()[1]} size="lg" onClick={() => navigate("/")}>
+            <Button className="justify-between w-full" variant={variantClasses()[1] as "default" | "outline" | "secondary"} size="lg" onClick={() => navigate("/")}>
               <span className="flex items-center">
                 <FileUp className="w-5 h-5 mr-2" />
                 Upload User Research
@@ -186,7 +187,7 @@ const EmptyState = ({ showAddUser = true, showUploadResearch = true, showAskQues
             </Button>
           )}
           {showAskQuestion && (
-            <Button className="justify-between w-full" variant={variantClasses()[2]} size="lg" onClick={() => navigate("/utterances")}>
+            <Button className="justify-between w-full" variant={variantClasses()[2] as "default" | "outline" | "secondary"} size="lg" onClick={() => navigate("/utterances")}>
               <span className="flex items-center">
                 <Search className="w-5 h-5 mr-2" />
                 Ask a Question
@@ -225,7 +226,6 @@ const SignUpForm = () => {
   const [, registerMutation] = useMutation(REGISTER_MUTATION);
   const storeToken = useStore((state) => state.storeToken);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [, navigate] = useLocation();
   const form = useForm<z.infer<typeof signupSchema>>({
     resolver: zodResolver(signupSchema),
     defaultValues: {
@@ -345,7 +345,7 @@ const LoginForm = () => {
       storeToken(result.data.login.token);
       navigate("/");
     } else if (result.data?.login.__typename === 'FormErrors') {
-      result.data.login.errors.forEach(error => {
+      result.data.login.errors.forEach((error: { field: string; message: string }) => {
         form.setError(error.field as "email" | "password", { message: error.message });
       });
     }
@@ -626,7 +626,9 @@ const SaveFilesForm = ({ userId }: { userId: string }) => {
             fileName: file.name,
             resolutionX: video.videoWidth,
             resolutionY: video.videoHeight,
-            frameRate: (video as any).mozFrameRate || (video as any).webkitFrameRate || 24,
+            frameRate: (video as HTMLVideoElement & { mozFrameRate?: number; webkitFrameRate?: number }).mozFrameRate || 
+                       (video as HTMLVideoElement & { mozFrameRate?: number; webkitFrameRate?: number }).webkitFrameRate || 
+                       24,
             duration: video.duration,
           });
         };
@@ -701,8 +703,8 @@ const SaveFilesForm = ({ userId }: { userId: string }) => {
                       <FileUploader
                         value={field.value}
                         onValueChange={(files) => {
-                          field.onChange(files);
-                          if (files.length > 0) {
+                          field.onChange(files ?? []);
+                          if (files?.[0]) {
                             detectFileMetadata(files[0]).then(metadata => {
                               form.setValue('fileMetadata', metadata);
                             });
@@ -772,6 +774,13 @@ const utterancesSchema = z.object({
   transcriptIds: z.array(z.string()).nonempty()
 })
 
+
+interface Utterance {
+  id: string;
+  text: string;
+  words: { id: string }[];
+}
+
 const GetUtterancesForm = () => {
   const [queryVariables, setQueryVariables] = useState<z.infer<typeof utterancesSchema> | null>(null)
   const [transcriptsResult] = useQuery({ query: GET_TRANSCRIPT_QUERY })
@@ -797,10 +806,10 @@ const GetUtterancesForm = () => {
     if (utterancesResult.data) {
       const utterances = utterancesResult.data.getRelevantUtterances;
       const utteranceSegments = utterances
-        .filter((u: any) => selectedUtterances.has(u.id))
-        .map((u: any) => ({
+        .filter((u: Utterance) => selectedUtterances.has(u.id))
+        .map((u: Utterance) => ({
           utteranceId: u.id,
-          wordIds: u.words.map((w: any) => w.id)
+          wordIds: u.words.map((w: { id: string }) => w.id)
         }));
 
       if (utteranceSegments.length > 0) {
@@ -952,7 +961,7 @@ const GetUtterancesForm = () => {
                   <p>No relevant utterances found. Try refining your question.</p>
                 ) : (
                   <>
-                    {utterancesResult.data.getRelevantUtterances.map((utterance: any) => (
+                    {utterancesResult.data.getRelevantUtterances.map((utterance: Utterance) => (
                       <div key={utterance.id} className="flex items-center mt-2 space-x-2">
                         <Checkbox
                           checked={selectedUtterances.has(utterance.id)}
@@ -1066,15 +1075,74 @@ const VideoPlayer = ({ id }: { id: string }) => {
     variables: { videoId: id }
   });
   const [error, setError] = useState<string | null>(null);
+  const [useNativePlayer, setUseNativePlayer] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [volume, setVolume] = useState(1);
+  const [isMuted, setIsMuted] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
   const [, navigate] = useLocation();
 
   useEffect(() => {
     setError(null);
+    setUseNativePlayer(false);
   }, [result]);
 
-  const handleError = (e: any) => {
+  const handlePlayPause = () => {
+    if (videoRef.current) {
+      if (isPlaying) {
+        videoRef.current.pause();
+      } else {
+        videoRef.current.play();
+      }
+      setIsPlaying(!isPlaying);
+    }
+  };
+
+  const handleTimeUpdate = () => {
+    if (videoRef.current) {
+      setCurrentTime(videoRef.current.currentTime);
+    }
+  };
+
+  const handleSeek = (value: number[]) => {
+    if (videoRef.current) {
+      videoRef.current.currentTime = value[0];
+      setCurrentTime(value[0]);
+    }
+  };
+
+  const handleVolumeChange = (value: number[]) => {
+    const newVolume = value[0];
+    setVolume(newVolume);
+    if (videoRef.current) {
+      videoRef.current.volume = newVolume;
+    }
+    setIsMuted(newVolume === 0);
+  };
+
+  const toggleMute = () => {
+    if (videoRef.current) {
+      videoRef.current.muted = !isMuted;
+      setIsMuted(!isMuted);
+      if (isMuted) {
+        setVolume(videoRef.current.volume);
+      } else {
+        setVolume(0);
+      }
+    }
+  };
+
+  const formatTime = (time: number) => {
+    const minutes = Math.floor(time / 60);
+    const seconds = Math.floor(time % 60);
+    return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+  };
+
+  const handleError = (e: React.SyntheticEvent<HTMLVideoElement, Event>) => {
     console.error('Video playback error:', e);
-    setError(`Failed to load the video: ${e.message || 'Unknown error'}`);
+    setError(`Failed to load the video: ${(e.target as HTMLVideoElement).error?.message || 'Unknown error'}`);
   };
 
   if (result.fetching) return (
@@ -1107,24 +1175,68 @@ const VideoPlayer = ({ id }: { id: string }) => {
             <div className="space-y-4">
               <div className="relative aspect-video">
                 <video
+                  ref={videoRef}
                   src={signedUrl}
                   className="w-full h-full"
-                  controls
+                  onTimeUpdate={handleTimeUpdate}
+                  onLoadedMetadata={() => setDuration(videoRef.current?.duration || 0)}
                   onError={handleError}
                   crossOrigin="anonymous"
-                ></video>
+                />
+              </div>
+              <div className="flex items-center space-x-2">
+                <Button size="icon" variant="ghost" onClick={handlePlayPause}>
+                  {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                </Button>
+                <span className="text-sm">{formatTime(currentTime)}</span>
+                <Slider
+                  min={0}
+                  max={duration}
+                  step={1}
+                  value={[currentTime]}
+                  onValueChange={handleSeek}
+                  className="w-full"
+                />
+                <span className="text-sm">{formatTime(duration)}</span>
+                <Button size="icon" variant="ghost" onClick={toggleMute}>
+                  {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+                </Button>
+                <Slider
+                  min={0}
+                  max={1}
+                  step={0.1}
+                  value={[volume]}
+                  onValueChange={handleVolumeChange}
+                  className="w-24"
+                />
               </div>
             </div>
           )}
           {error && <AnimatedErrorMessage message={error} />}
         </CardContent>
+        {error && (
+          <CardFooter>
+            <Button onClick={() => setUseNativePlayer(!useNativePlayer)}>
+              <RotateCcw className="w-4 h-4 mr-2" />
+              Try {useNativePlayer ? 'Custom' : 'Native'} Player
+            </Button>
+          </CardFooter>
+        )}
       </Card>
     </div>
   );
 };
 
 // Nav and Routing
-const routes = [
+
+interface Route {
+  path: string;
+  label: string;
+  icon: LucideIcon;
+  isDynamic?: boolean;
+}
+
+const routes: Route[] = [
   { path: "/", label: "Users", icon: Users },
   { path: "/new-user", label: "New User", icon: UserPlus },
   { path: "/utterances", label: "Search Utterances", icon: Search },
@@ -1140,9 +1252,9 @@ const Navigation = () => {
   useEffect(() => {
     setActiveItem(location);
 
-    let updatedRoutes = [...routes];
-    const userMatch = location.match(/^\/users\/([^\/]+)/);
-    const videoMatch = location.match(/^\/videos\/([^\/]+)/);
+    const updatedRoutes = [...routes];
+    const userMatch = location.match(/^\/users\/([^/]+)/);
+    const videoMatch = location.match(/^\/videos\/([^/]+)/);
 
     if (userMatch) {
       const userId = userMatch[1];
@@ -1173,7 +1285,13 @@ const Navigation = () => {
     setCurrentRoutes(updatedRoutes);
   }, [location]);
 
-  const NavItem = ({ icon: Icon, children, path, isActive, isDynamic }) => {
+  const NavItem = ({ icon: Icon, children, path, isActive, isDynamic }: {
+    icon: LucideIcon;
+    children: React.ReactNode;
+    path: string;
+    isActive: boolean;
+    isDynamic: boolean;
+  }) => {
     const content = (
       <NavigationMenuItem className="w-full">
         <Link href={path} className="w-full">
@@ -1223,7 +1341,7 @@ const Navigation = () => {
                   ? activeItem === '/'
                   : activeItem.startsWith(route.path)
               }
-              isDynamic={route.isDynamic}
+              isDynamic={route.isDynamic || false}
             >
               {route.label}
             </NavItem>
@@ -1303,7 +1421,7 @@ const AppRouter = ({ token }: { token: string }) => {
 
   return (
     <Switch>
-      <Route path="/" exact>
+      <Route path="/">
         <ProtectedRoute>
           <UserList />
         </ProtectedRoute>
