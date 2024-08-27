@@ -380,7 +380,7 @@ async def upload_file(
 ):
     # TODO: store intended file visibility
     key = metadata.get("key")
-    visibility = metadata.get("visibility", Visibility.PRIVATE)
+    visibility = metadata.get("visibility", Visibility.PRIVATE.value)
     if not metadata.get("upload_id"):
         file_access: bool = await insert_file_access(
             d1,
@@ -435,6 +435,7 @@ class R2MultipartUploadResponse(R2MultipartUpload):
 def file_create_start_factory(file_body: dict[str, Any] | list):
     match file_body:
         case dict():
+            print(file_body)
             return FileCreateStartBody(**file_body)
         case list():
             return [R2UploadedPartBody(**part) for part in file_body]
@@ -493,21 +494,40 @@ async def delete(
     raise NotImplementedError("Not implemented")
 
 
+def handle_cors_preflight():
+    headers = Headers.new()
+    headers.set("Access-Control-Allow-Origin", "*")
+    headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+    headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-API-Key")
+    headers.set("Access-Control-Max-Age", "86400")
+    return Response.new(None, status=204, headers=headers)
+
+def get_cors_headers():
+    headers = Headers.new()
+    headers.set("Access-Control-Allow-Origin", "*")
+    headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+    headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-API-Key")
+    return headers
+
 async def on_fetch(request: WorkerRequestType, env: Env):
+    method = Method(request.method)
+    if method == Method.OPTIONS:
+        return handle_cors_preflight()
     url_path, params = get_url_path_and_params(request.url)
     auth_with_token = (url_path == "download" and "token" in params)
     if "X-API-Key" not in request.headers and not auth_with_token:
+        print(request.headers)
         print("No X-API-Key")
         js_error = json.dumps({"error": "Unauthorized"})
-        return Response.json(js_error, status=401)
+        return Response.json(js_error, status=401, headers=get_cors_headers())
     try:
         method = Method(request.method)
     except ValueError:
         js_error = json.dumps({"error": "Invalid method"})
-        return Response.json(js_error, status=405)
+        return Response.json(js_error, status=405, headers=get_cors_headers())
     if url_path not in ["files", "download"]:
         js_error = json.dumps({"error": "Not found"})
-        return Response.json(js_error, status=404)
+        return Response.json(js_error, status=404, headers=get_cors_headers())
     try:
         if not auth_with_token:
             employee = await authenticate_employee(request.headers["X-API-Key"], env)
@@ -516,22 +536,22 @@ async def on_fetch(request: WorkerRequestType, env: Env):
     except (AssertionError, ValueError) as e:
         print(f"Unauthorized: {e}")
         js_error = json.dumps({"error": "Unauthorized"})
-        return Response.json(js_error, status=401)
+        return Response.json(js_error, status=401, headers=get_cors_headers())
     except Exception as e:
         print(f"Error: {e}")
         js_error = json.dumps({"error": "Internal server error"})
-        return Response.json(js_error, status=500)
+        return Response.json(js_error, status=500, headers=get_cors_headers())
     if not auth_with_token:
         try:
             employee_registered = await check_and_insert_employee(env.DB, employee)
             if not employee_registered:
                 return Response.json(
-                    {"error": "Employee registration failed, check jwt"}, status=400
+                    {"error": "Employee registration failed, check jwt"}, status=400, headers=get_cors_headers()
                 )
         except ValueError as e:
             print(f"Error: {e}")
             js_error = json.dumps({"error": str(e)})
-            return Response.json(js_error, status=400)
+            return Response.json(js_error, status=400, headers=get_cors_headers())
     match method:
         case Method.GET:
             if url_path == "download":
@@ -551,11 +571,11 @@ async def on_fetch(request: WorkerRequestType, env: Env):
                     except ValueError as e:
                         print(f"Error: {e}")
                         js_error = json.dumps({"error": str(e)})
-                        return Response.json(js_error, status=400)
+                        return Response.json(js_error, status=400, headers=get_cors_headers())
                     if validated_key != file_key:
                         print(f"File key: {file_key}")
                         return Response.json(
-                            to_js({"error": "Invalid or expired token"}), status=404
+                            to_js({"error": "Invalid or expired token"}), status=404, headers=get_cors_headers()
                         )
                     try:
                         file = await get_file(
@@ -574,7 +594,7 @@ async def on_fetch(request: WorkerRequestType, env: Env):
                             readable_stream, headers=headers, status=200
                         )
                     except Exception as e:
-                        return Response.json(to_js({"error": str(e)}), status=404)
+                        return Response.json(to_js({"error": str(e)}), status=404, headers=get_cors_headers())
                 elif not token:
                     token = await generate_signed_url_token(
                         env,
@@ -586,14 +606,14 @@ async def on_fetch(request: WorkerRequestType, env: Env):
                         return Response.json(
                             to_js({"error": "Failed to generate token"}), status=500
                         )
-                    return Response.json(to_js({"token": token}), status=200)
+                    return Response.json(to_js({"token": token}), status=200, headers=get_cors_headers())
                 else:
                     return Response.json(
                         to_js({"error": "Invalid request."}), status=400
                     )
             if params == {}:
                 js_error = json.dumps({"error": "Invalid request - no params on GET."})
-                return Response.json(js_error, status=400)
+                return Response.json(js_error, status=400, headers=get_cors_headers())
             limit = params.get("limit", None)
             if limit is not None:
                 limit = int(limit)
@@ -603,7 +623,7 @@ async def on_fetch(request: WorkerRequestType, env: Env):
             get_key = params.get("key", None)
             if get_key is None and cursor is None and range is None and limit is None:
                 js_error = json.dumps({"error": "Invalid request"})
-                return Response.json(js_error, status=400)
+                return Response.json(js_error, status=400, headers=get_cors_headers())
             if limit is not None or cursor is not None:
                 options = ListOptions(limit=limit, cursor=cursor)
             elif range is not None or onlyIf is not None:
@@ -617,15 +637,15 @@ async def on_fetch(request: WorkerRequestType, env: Env):
             except ValueError as e:
                 print(f"GET Value error: {e}")
                 js_error = json.dumps({"error": str(e)})
-                return Response.json(js_error, status=400)
+                return Response.json(js_error, status=400, headers=get_cors_headers())
             except PermissionError as e:
                 print(f"GET Permission error: {e}")
                 js_error = json.dumps({"error": str(e)})
-                return Response.json(js_error, status=403)
+                return Response.json(js_error, status=403, headers=get_cors_headers())
             except FileNotFoundError as e:
                 print(f"GET File not found error: {e}")
                 js_error = json.dumps({"error": str(e)})
-                return Response.json(js_error, status=404)
+                return Response.json(js_error, status=404, headers=get_cors_headers())
             if hasattr(file, "body"):
                 headers = Headers.new()
                 headers.set("Content-Disposition", f'filename="{file.key}"')
@@ -636,7 +656,7 @@ async def on_fetch(request: WorkerRequestType, env: Env):
             return Response.json(file, status=206)
         case Method.POST:
             if url_path != "files":
-                return Response.json(to_js({"error": "Invalid request"}), status=400)
+                return Response.json(to_js({"error": "Invalid request"}), status=400, headers=get_cors_headers())
             try:
                 multi_part_body = await stream_to_json(request.body)
                 upload_id = params.get("upload_id", None)
@@ -654,11 +674,11 @@ async def on_fetch(request: WorkerRequestType, env: Env):
             except (ValueError, JsException) as e:
                 print(f"Error: {e}")
                 js_error = json.dumps({"error": str(e)})
-                return Response.json(js_error, status=400)
-            return Response.json(file)
+                return Response.json(js_error, status=400, headers=get_cors_headers())
+            return Response.json(file, headers=get_cors_headers())
         case Method.PUT:
             if url_path != "files":
-                return Response.json(to_js({"error": "Invalid request"}), status=400)
+                return Response.json(to_js({"error": "Invalid request"}), status=400, headers=get_cors_headers())
             try:
                 if int(request.headers["content-length"]) > DataSize.MB_100.value:
                     raise ValueError("File size too large")
@@ -670,16 +690,16 @@ async def on_fetch(request: WorkerRequestType, env: Env):
                 print(f"PUT Error: {e}")
                 if "TypeError" in str(e):
                     js_error = to_js({"error": "Multipart form-data required"})
-                    return Response.json(js_error, status=400)
+                    return Response.json(js_error, status=400, headers=get_cors_headers())
                 js_error = to_js({"error": str(e)})
-                return Response.json(js_error, status=400)
+                return Response.json(js_error, status=400, headers=get_cors_headers())
 
-            return Response.json(file, status=status)
+            return Response.json(file, status=status, headers=get_cors_headers())
         case Method.DELETE:
             if url_path != "files":
-                return Response.json(to_js({"error": "Invalid request"}), status=400)
+                return Response.json(to_js({"error": "Invalid request"}), status=400, headers=get_cors_headers())
             # file = await delete(request.body, employee, env.BUCKET)
-            return Response.json({"message": "Not implemented"}, status=501)
+            return Response.json({"message": "Not implemented"}, status=501, headers=get_cors_headers())
         case _:
             js_error = json.dumps({"error": "Method not allowed"})
-            return Response.json(js_error, status=405)
+            return Response.json(js_error, status=405, headers=get_cors_headers())

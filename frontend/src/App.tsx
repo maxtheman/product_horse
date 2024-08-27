@@ -1,5 +1,5 @@
-import { REGISTER_MUTATION, SAVE_USER_MUTATION, SAVE_FILES_MUTATION, GET_USERS_QUERY, GET_UTTERANCES_QUERY, GET_TRANSCRIPT_QUERY, CREATE_VIDEO_MUTATION, GET_ALL_VIDEOS_QUERY, GET_VIDEO_QUERY, LOGIN_MUTATION} from "./graphql";
-import { tokenManager } from "./utils/tokenManager";
+import { REGISTER_MUTATION, SAVE_USER_MUTATION, GET_USERS_QUERY, GET_UTTERANCES_QUERY, GET_TRANSCRIPT_QUERY, CREATE_VIDEO_MUTATION, GET_ALL_VIDEOS_QUERY, GET_VIDEO_QUERY, LOGIN_MUTATION} from "./graphql";
+import { tokenManager } from "@/utils/tokenManager";
 import { create } from 'zustand'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -28,6 +28,7 @@ import {
   navigationMenuTriggerStyle,
 } from "@/components/ui/navigation-menu";
 import { cn } from "@/lib/utils"
+import StorageClient from "@/utils/storage";
 import {
   Users,
   UserPlus,
@@ -570,7 +571,6 @@ const UserList = () => {
 };
 
 const SaveFilesForm = ({ userId }: { userId: string }) => {
-  const [, saveFiles] = useMutation(SAVE_FILES_MUTATION)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [videoSuccess, setVideoSuccess] = useState(false);
   const [, navigate] = useLocation();
@@ -579,6 +579,12 @@ const SaveFilesForm = ({ userId }: { userId: string }) => {
     const shortUuid = uuidv4().split('-')[0]; // Get the first part of the UUID
     return `${shortUuid}_${originalName}`;
   };
+
+  const jwtToken = tokenManager.get() ?? '';
+  if (!jwtToken) {
+    navigate("/login")
+  }
+  const storageClient = new StorageClient(jwtToken)
 
   const form = useForm<z.infer<typeof fileSchema>>({
     resolver: zodResolver(fileSchema),
@@ -597,7 +603,7 @@ const SaveFilesForm = ({ userId }: { userId: string }) => {
 
   const dropzoneOptions = {
     accept: { 'video/*': [], 'audio/*': [] },
-    maxFiles: 1,
+    maxFiles: 5,
     maxSize: 5 * 1024 * 1024 * 1024, // 5 GB
   };
 
@@ -627,9 +633,9 @@ const SaveFilesForm = ({ userId }: { userId: string }) => {
             fileName: file.name,
             resolutionX: video.videoWidth,
             resolutionY: video.videoHeight,
-            frameRate: (video as HTMLVideoElement & { mozFrameRate?: number; webkitFrameRate?: number }).mozFrameRate || 
-                       (video as HTMLVideoElement & { mozFrameRate?: number; webkitFrameRate?: number }).webkitFrameRate || 
-                       24,
+            frameRate: (video as HTMLVideoElement & { mozFrameRate?: number; webkitFrameRate?: number }).mozFrameRate ||
+              (video as HTMLVideoElement & { mozFrameRate?: number; webkitFrameRate?: number }).webkitFrameRate ||
+              24,
             duration: video.duration,
           });
         };
@@ -640,34 +646,35 @@ const SaveFilesForm = ({ userId }: { userId: string }) => {
 
   const onSubmit = async (data: z.infer<typeof fileSchema>) => {
     setIsSubmitting(true)
-    toast("File uploading...", {
+    toast("Files uploading...", {
       description: "Your upload is in progress.",
     });
-    // Generate a unique file name
-    const uniqueFileName = generateUniqueFileName(data.fileMetadata.fileName);
-
-    // Update the file metadata with the new file name
-    const updatedData = {
-      ...data,
-      fileMetadata: {
-        ...data.fileMetadata,
-        fileName: uniqueFileName,
-      },
-    };
-    const result = await saveFiles({ ...updatedData, userId })
-    if (result.data) {
-      setVideoSuccess(true);
-      form.reset();
-      toast("File saved successfully", {
-        description: "Your upload is ready to create a video.",
-        action: {
-          label: "Create Video",
-          onClick: () => navigate(`/utterances`),
-        },
+    try {
+      const uploadPromises = data.files.map(async (file) => {
+        const uniqueFileName = generateUniqueFileName(file.name);
+        const result = await storageClient.upload(file, uniqueFileName, "INTERNAL");
+        return result;
       });
-    }
-    if (result.error) {
-      form.setError("root", { type: 'custom', message: result.error.graphQLErrors[0].message })
+
+      const results = await Promise.all(uploadPromises);
+
+      if (results.every(Boolean)) {
+        setVideoSuccess(true);
+        form.reset();
+        toast("Files saved successfully", {
+          description: `${results.length} file(s) uploaded. Ready to create videos.`,
+          action: {
+            label: "Create Video",
+            onClick: () => navigate(`/utterances`),
+          },
+        });
+      } else {
+        console.log(results);
+        throw new Error("Some files failed to upload");
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred with file';
+      form.setError("root", { type: 'custom', message: errorMessage })
     }
     setIsSubmitting(false)
   }

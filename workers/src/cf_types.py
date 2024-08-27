@@ -110,6 +110,7 @@ class Method(Enum):
     POST = "POST"
     PUT = "PUT"
     DELETE = "DELETE"
+    OPTIONS = "OPTIONS"
 
 
 class Headers(Protocol):
@@ -193,7 +194,7 @@ class WorkerRequestType(Protocol):
     bodyUsed: bool
     cf: RequestInitCfProperties
     headers: Headers
-    method: Literal["GET", "POST", "PUT", "DELETE"]
+    method: Literal["GET", "POST", "PUT", "DELETE", "OPTIONS"]
     url: str
     redirect: Literal["follow", "error", "manual"]
 
