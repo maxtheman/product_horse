@@ -1,4 +1,4 @@
-import { REGISTER_MUTATION, SAVE_USER_MUTATION, GET_USERS_QUERY, GET_UTTERANCES_QUERY, GET_TRANSCRIPT_QUERY, CREATE_VIDEO_MUTATION, GET_ALL_VIDEOS_QUERY, GET_VIDEO_QUERY, LOGIN_MUTATION} from "./graphql";
+import { REGISTER_MUTATION, SAVE_USER_MUTATION, GET_USERS_QUERY, GET_UTTERANCES_QUERY, GET_TRANSCRIPT_QUERY, CREATE_VIDEO_MUTATION, GET_ALL_VIDEOS_QUERY, GET_VIDEO_QUERY, LOGIN_MUTATION, SAVE_FILES_MUTATION, TRANSCRIBE_FILE_MUTATION } from "./graphql";
 import { tokenManager } from "@/utils/tokenManager";
 import { create } from 'zustand'
 import { Button } from "@/components/ui/button"
@@ -9,7 +9,6 @@ import {
   FileUploader,
   FileInput,
 } from "@/components/extension/file-upload";
-import { v4 as uuidv4 } from 'uuid'; // Add this import at the top of the file
 import { toast } from "sonner"
 import { Form, FormField, FormItem, FormLabel, FormControl } from "@/components/ui/form"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -54,7 +53,8 @@ import { Slider } from "@/components/ui/slider"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useLocation, Router, Switch, Route, Link } from "wouter"
 
-// Test comment
+// TODOS:
+// - Add a progress bar to the uploader and move the upload logic to zustand state
 
 // HELPERS
 interface AnimatedErrorMessageProps {
@@ -570,15 +570,19 @@ const UserList = () => {
   );
 };
 
+enum FileType {
+  VIDEO = "VIDEO",
+  AUDIO = "AUDIO",
+  TEXT = "TEXT"
+}
+
 const SaveFilesForm = ({ userId }: { userId: string }) => {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [videoSuccess, setVideoSuccess] = useState(false);
   const [, navigate] = useLocation();
 
-  const generateUniqueFileName = (originalName: string) => {
-    const shortUuid = uuidv4().split('-')[0]; // Get the first part of the UUID
-    return `${shortUuid}_${originalName}`;
-  };
+  const [, saveFiles] = useMutation(SAVE_FILES_MUTATION);
+  const [, transcribeFile] = useMutation(TRANSCRIBE_FILE_MUTATION);
 
   const jwtToken = tokenManager.get() ?? '';
   if (!jwtToken) {
@@ -645,39 +649,81 @@ const SaveFilesForm = ({ userId }: { userId: string }) => {
   };
 
   const onSubmit = async (data: z.infer<typeof fileSchema>) => {
-    setIsSubmitting(true)
+    setIsSubmitting(true);
     toast("Files uploading...", {
       description: "Your upload is in progress.",
     });
     try {
-      const uploadPromises = data.files.map(async (file) => {
-        const uniqueFileName = generateUniqueFileName(file.name);
-        const result = await storageClient.upload(file, uniqueFileName, "INTERNAL");
-        return result;
-      });
-
-      const results = await Promise.all(uploadPromises);
-
-      if (results.every(Boolean)) {
-        setVideoSuccess(true);
-        form.reset();
-        toast("Files saved successfully", {
-          description: `${results.length} file(s) uploaded. Ready to create videos.`,
-          action: {
-            label: "Create Video",
-            onClick: () => navigate(`/utterances`),
-          },
-        });
-      } else {
-        console.log(results);
-        throw new Error("Some files failed to upload");
+      // Step 0: Save files to server with mutation
+      const fileMetadataInput = await Promise.all(data.files.map(async (file) => {
+        const metadata = await detectFileMetadata(file);
+        return {
+          fileName: file.name,
+          fileType: metadata.fileType,
+          resolutionX: metadata.resolutionX,
+          resolutionY: metadata.resolutionY,
+          frameRate: metadata.frameRate,
+          duration: metadata.duration,
+        };
+      }));
+  
+      const saveFilesResult = await saveFiles({ userId, fileMetadata: fileMetadataInput });
+      
+      if (saveFilesResult.error) {
+        throw new Error(saveFilesResult.error.message);
       }
+  
+      const savedFiles = saveFilesResult.data.saveFiles;
+  
+      // Step 1 & 2: Upload files and transcribe
+      const processPromises = savedFiles.map(async (savedFile: { id: string, filePath: string, fileName: string }, index: number) => {
+        const file = data.files[index];
+        
+        // Upload file
+        const uploadResult = await storageClient.upload(file, savedFile.filePath, "INTERNAL");
+        if (!uploadResult) {
+          throw new Error(`Failed to upload file: ${savedFile.fileName}`);
+        }
+  
+        // Transcribe file
+        const fileToTranscribe = {
+          fileName: savedFile.fileName,
+          fileType: FileType.VIDEO, // Assuming it's always video, adjust if needed
+          resolution_x: savedFile.resolutionX,
+          resolution_y: savedFile.resolutionY,
+          frame_rate: savedFile.frameRate,
+          duration: savedFile.duration,
+        };
+        const transcribeResult = await transcribeFile({ fileToTranscribe });
+        if (!transcribeResult.data?.transcribeFile) {
+          throw new Error(`Failed to transcribe file: ${savedFile.fileName}`);
+        }
+  
+        return { uploadResult, transcribeResult };
+      });
+  
+      const results = await Promise.all(processPromises);
+      console.log("Processing results:", results);
+  
+      setVideoSuccess(true);
+      form.reset();
+      toast("Files uploaded and transcribed successfully", {
+        description: `${savedFiles.length} file(s) processed. Ready to create videos.`,
+        action: {
+          label: "Create Video",
+          onClick: () => navigate(`/utterances`),
+        },
+      });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred with file';
-      form.setError("root", { type: 'custom', message: errorMessage })
+      form.setError("root", { type: 'custom', message: errorMessage });
+      toast.error("Error processing files", {
+        description: errorMessage,
+      });
+    } finally {
+      setIsSubmitting(false);
     }
-    setIsSubmitting(false)
-  }
+  };
 
   return (
     <div className="container py-10 mx-auto">

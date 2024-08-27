@@ -56,13 +56,22 @@ export const GET_USERS_QUERY = gql`
 `;
 
 export const SAVE_FILES_MUTATION = gql`
-  mutation SaveFilesAndTranscriptions($userId: UUID!, $files: [Upload!]!, $fileMetadata: FileMetadataInput!) {
-    saveFilesAndTranscriptions(userId: $userId, files: $files, fileMetadata: $fileMetadata) {
+  mutation SaveFiles($userId: UUID!, $fileMetadata: [FileMetadataInput!]!) {
+    saveFiles(userId: $userId, fileMetadata: $fileMetadata) {
       id
       filePath
+      fileName
     }
   }
 `;
+
+export const TRANSCRIBE_FILE_MUTATION = gql`
+  mutation TranscribeFile($fileToTranscribe: FileMetadataInput!) {
+    transcribeFile(fileToTranscribe: $fileToTranscribe)
+  }
+`;
+
+
 
 export const GET_UTTERANCES_QUERY = gql`
   query GetUtterances($question: String!, $transcriptIds: [String!]!) {

@@ -15,8 +15,8 @@ pip install product_horse
 
 ```dotenvx run -f .env.{...} -- rye run setup_env```
 
-``` python
-1+1
+``` 
+flyctl deploy --build-secret dotenv_key="..."
 ```
 
     2
