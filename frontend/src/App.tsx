@@ -1053,7 +1053,7 @@ const GetUtterancesForm = () => {
 
 // CREATE AND GET VIDEO
 const VideoList = () => {
-  const [result] = useQuery({ query: GET_ALL_VIDEOS_QUERY });
+  const [result, refetch] = useQuery({ query: GET_ALL_VIDEOS_QUERY });
   const [, navigate] = useLocation();
 
   if (result.fetching) return (
@@ -1123,6 +1123,12 @@ const VideoList = () => {
             </TableBody>
           </Table>
         </CardContent>
+        <CardFooter>
+          <Button onClick={() => refetch({ requestPolicy: 'network-only' })}>
+            <RotateCcw className="w-4 h-4 mr-2" />
+            Refresh Data
+          </Button>
+        </CardFooter>
       </Card>
     </div>
   );
