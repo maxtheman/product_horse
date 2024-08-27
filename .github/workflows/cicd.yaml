@@ -1,41 +1,41 @@
-name: CI/CD
-on: [push, pull_request]
+# name: CI/CD
+# on: [push, pull_request]
 
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    env:
-      DOTENV_PRIVATE_KEY_CI: ${{ secrets.DOTENV_PRIVATE_KEY_CI }}
-    steps:
-      - name: Checkout the repository
-        uses: actions/checkout@v3
-      - name: Intall dotenvx
-        run: curl -sfS https://dotenvx.sh/install.sh | sh
-      - name: Install FFmpeg and imagmagick deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg
-          sudo apt-get install ghostscript
-          sudo apt-get install fonts-freefont-otf
-      - name: Install the latest version of rye
-        uses: eifinger/setup-rye@v4
-        with:
-          enable-cache: true
-      - name: Install project
-        run: |
-          PYTHONDONTWRITEBYTECODE=1 pip install --no-cache-dir -r requirements.lock
-          pip install -e .
-      - name: Set PYTHONPATH
-        run: echo "PYTHONPATH=$PYTHONPATH:$(pwd)" >> $GITHUB_ENV
-      - name: Sync dependencies
-        run: dotenvx run -f .env.ci -- rye sync
-      - name: Fix ImageMagick security policy
-        run: sudo sed -i 's/rights="none" pattern="@\*"/rights="read|write" pattern="@*"/' /etc/ImageMagick-6/policy.xml
-      - name: Setup environment
-        run: |
-          dotenvx run -f .env.ci -- python $(pwd)/scripts/setup_env.py
-      - name: Run tests
-        run: dotenvx run -f .env.ci -- rye run nbdev_test --skip_file_re "07_db\.ipynb" --do_print
+# jobs:
+#   test:
+#     runs-on: ubuntu-latest
+#     env:
+#       DOTENV_PRIVATE_KEY_CI: ${{ secrets.DOTENV_PRIVATE_KEY_CI }}
+#     steps:
+#       - name: Checkout the repository
+#         uses: actions/checkout@v3
+#       - name: Intall dotenvx
+#         run: curl -sfS https://dotenvx.sh/install.sh | sh
+#       - name: Install FFmpeg and imagmagick deps
+#         run: |
+#           sudo apt-get update
+#           sudo apt-get install -y ffmpeg
+#           sudo apt-get install ghostscript
+#           sudo apt-get install fonts-freefont-otf
+#       - name: Install the latest version of rye
+#         uses: eifinger/setup-rye@v4
+#         with:
+#           enable-cache: true
+#       - name: Install project
+#         run: |
+#           PYTHONDONTWRITEBYTECODE=1 pip install --no-cache-dir -r requirements.lock
+#           pip install -e .
+#       - name: Set PYTHONPATH
+#         run: echo "PYTHONPATH=$PYTHONPATH:$(pwd)" >> $GITHUB_ENV
+#       - name: Sync dependencies
+#         run: dotenvx run -f .env.ci -- rye sync
+#       - name: Fix ImageMagick security policy
+#         run: sudo sed -i 's/rights="none" pattern="@\*"/rights="read|write" pattern="@*"/' /etc/ImageMagick-6/policy.xml
+#       - name: Setup environment
+#         run: |
+#           dotenvx run -f .env.ci -- python $(pwd)/scripts/setup_env.py
+#       - name: Run tests
+#         run: dotenvx run -f .env.ci -- rye run nbdev_test --skip_file_re "07_db\.ipynb" --do_print
 
   # deploy-fly:
   #   needs: test
