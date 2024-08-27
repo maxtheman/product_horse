@@ -315,15 +315,28 @@ def write_video(
     video_path: str, video_clip: VideoFileClip | VideoClip | CompositeVideoClip
 ):
     console = Console()
+    print("threads", os.cpu_count())
     try:
         video_clip.write_videofile(
             video_path,
             fps=video_clip.fps,  # type: ignore
             audio_codec="aac",
             preset="ultrafast",
+            # codec="h264_videotoolbox",
             codec="libx264",
             threads=os.cpu_count(),
-            ffmpeg_params=['-movflags', 'faststart']
+            ffmpeg_params=['-movflags', 'faststart', '-g', '30', '-bf', '0']
+        # | 3551/4343 [08:35<02:15,  5.83it/s, now=Non -- size was 1920x1080
+        # reducing size by 4x didn't help much
+        #  '-tune', 'zerolatency' didn't help at all
+        # video_clip.write_videofile(
+        #     video_path,
+        #     fps=video_clip.fps,  # type: ignore
+        #     audio_codec="aac",
+        #     preset="ultrafast",
+        #     codec="libx264",
+        #     threads=os.cpu_count(),
+        #     ffmpeg_params=['-movflags', 'faststart']
         )
         return True
     except Exception as e:

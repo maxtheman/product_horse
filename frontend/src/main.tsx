@@ -5,9 +5,11 @@ import { tokenManager } from './utils/tokenManager';
 import App from './App.tsx'
 import './index.css'
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/graphql';
+
+
 const client = new Client({
-  url: 'https://product-horse.fly.dev/graphql',
-  // url: 'http://127.0.0.1:8000/graphql',
+  url: API_URL,
   exchanges: [cacheExchange, fetchExchange],
   fetchOptions: () => {
     const token = tokenManager.get();
