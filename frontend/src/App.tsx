@@ -875,14 +875,15 @@ const GetUtterancesForm = () => {
         if (result.data) {
           setVideoCreated(true);
           form.reset();
-          toast("Video created successfully", {
-            description: "Your video is now ready to view.",
+          toast("Video job created successfully", {
+            description: "Your video is being processed. Check the video list for updates.",
             action: {
-              label: "View Video",
-              onClick: () => navigate(`/videos/${result.data.createVideoFromUtterances.id}`),
+              label: "View Videos",
+              onClick: () => navigate("/videos"),
             },
             duration: 5000
           });
+          navigate("/videos");
         }
         if (result.error) {
           form.setError("root", { type: 'custom', message: result.error.graphQLErrors[0].message });
@@ -1041,8 +1042,8 @@ const GetUtterancesForm = () => {
                 )}
               </div>
             )}
-            {videoCreated && <p className="mt-4 text-green-500">Video created successfully!</p>}
-            {utterancesResult.error && <p className="mt-4 text-red-500">{utterancesResult.error.graphQLErrors[0].message}</p>}
+          {videoCreated && <p className="mt-4 text-green-500">Video job created successfully! Check the video list for updates.</p>}
+          {utterancesResult.error && <p className="mt-4 text-red-500">{utterancesResult.error.graphQLErrors[0].message}</p>}
           </CardContent>
         </Card>
       )}
@@ -1090,7 +1091,9 @@ const VideoList = () => {
       <Card>
         <CardHeader>
           <CardTitle>Video List</CardTitle>
-          <CardDescription>View and manage all your created videos.</CardDescription>
+          <CardDescription>View and manage all your created videos. <br />
+            <span className="text-xs">If you don't see your video here, it may still be early in the processing pipeline.</span>
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <Table>
