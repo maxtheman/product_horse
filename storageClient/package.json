@@ -39,10 +39,10 @@
   "dependencies": {
     "es6-promise": "^4.2.4",
     "url-parse": "^1.4.3",
-    "whatwg-fetch": "^3.0.0"
+    "whatwg-fetch": "^3.0.0",
+    "typescript": "^5.4.5"
   },
   "devDependencies": {
-    "@types/url-parse": "1.4.4",
-    "typescript": "^5.4.5"
+    "@types/url-parse": "1.4.4"
   }
 }
