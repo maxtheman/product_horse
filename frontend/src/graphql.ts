@@ -67,7 +67,11 @@ export const SAVE_FILES_MUTATION = gql`
 
 export const TRANSCRIBE_FILE_MUTATION = gql`
   mutation TranscribeFile($fileId: String!) {
-    transcribeFile(fileId: $fileId)
+    transcribeFile(fileId: $fileId) {
+      id
+      filePath
+      fileName
+    }
   }
 `;
 

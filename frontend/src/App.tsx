@@ -702,7 +702,7 @@ const SaveFilesForm = ({ userId }: { userId: string }) => {
           frameRate: metadata.frameRate,
           duration: metadata.duration,
         };
-        const transcribeResult = await transcribeFile({ fileToTranscribe });
+        const transcribeResult = await transcribeFile({ fileId: fileToTranscribe.id });
         if (!transcribeResult.data?.transcribeFile) {
           throw new Error(`Failed to transcribe file: ${savedFile.fileName}`);
         }
