@@ -31,7 +31,8 @@
   ],
   "typings": "./dist/index.d.ts",
   "scripts": {
-    "build": "tsc && npm run build:cjs",
+    "build": "npm run build:esm && npm run build:cjs",
+    "build:esm": "tsc --outDir ./dist",
     "build:cjs": "tsc --module commonjs --outDir ./dist/cjs",
     "prepare": "npm run build"
   },
