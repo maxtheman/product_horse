@@ -443,13 +443,13 @@ const SaveUserForm = () => {
         <h1 className="text-3xl font-bold tracking-tight">Add New User</h1>
         <Button variant="outline" onClick={() => navigate("/")}>
           <ArrowLeft className="w-4 h-4 mr-2" />
-          Back to Users
+          Back to Contacts
         </Button>
       </div>
       <Card className="w-full max-w-3xl mx-auto">
         <CardHeader>
-          <CardTitle>New User Details</CardTitle>
-          <CardDescription>Create a new user profile to manage research and insights.</CardDescription>
+          <CardTitle>New Contact Details</CardTitle>
+          <CardDescription>Create a new contact profile to manage research and insights.</CardDescription>
         </CardHeader>
         <CardContent>
           <Form {...form}>
@@ -527,10 +527,10 @@ const UserList = () => {
   return (
     <div className="container py-10 mx-auto">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-3xl font-bold tracking-tight">Users</h1>
+        <h1 className="text-3xl font-bold tracking-tight">Contacts</h1>
         <Button onClick={() => navigate("/new-user")}>
           <PlusCircle className="w-4 h-4 mr-2" />
-          Add User
+          Add Contact
         </Button>
       </div>
       {result.data.getUsers.length === 0 ? (
@@ -538,8 +538,8 @@ const UserList = () => {
       ) : (
         <Card>
           <CardHeader>
-            <CardTitle>User List</CardTitle>
-            <CardDescription>Manage and view all users in your system.</CardDescription>
+            <CardTitle>Contact List</CardTitle>
+            <CardDescription>Manage and view all contacts in your system.</CardDescription>
           </CardHeader>
           <CardContent>
             <Table>
@@ -742,7 +742,7 @@ const SaveFilesForm = ({ userId }: { userId: string }) => {
         </div>
         <Button variant="outline" onClick={() => navigate("/")}>
           <ArrowLeft className="w-4 h-4 mr-2" />
-          Back to Users
+          Back to Contacts
         </Button>
       </div>
 
@@ -932,7 +932,7 @@ const GetUtterancesForm = () => {
   return (
     <div className="container py-10 mx-auto">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-3xl font-bold tracking-tight">Search Utterances</h1>
+        <h1 className="text-3xl font-bold tracking-tight">Search for Clips</h1>
         <Button onClick={() => navigate("/")}>
           <PlusCircle className="w-4 h-4 mr-2" />
           Upload Research
@@ -948,7 +948,7 @@ const GetUtterancesForm = () => {
         <Card className="w-full">
           <CardHeader>
             <CardTitle>Ask a Question</CardTitle>
-            <CardDescription>Find relevant utterances from your transcripts and create videos.</CardDescription>
+            <CardDescription>Find relevant clips from your transcripts and create videos.</CardDescription>
           </CardHeader>
           <CardContent>
             <Form {...form}>
@@ -1043,8 +1043,8 @@ const GetUtterancesForm = () => {
                       {isSubmitting
                         ? "Creating Video"
                         : selectedUtterances.size === 0
-                          ? "Select Utterances to Create a Video"
-                          : "Create Video from Selected Utterances"}
+                          ? "Select Clips to Create a Video"
+                          : "Create Video from Selected Clips"}
                     </Button>
                   </>
                 )}
@@ -1310,9 +1310,9 @@ interface Route {
 }
 
 const routes: Route[] = [
-  { path: "/", label: "Users", icon: Users },
-  { path: "/new-user", label: "New User", icon: UserPlus },
-  { path: "/utterances", label: "Search Utterances", icon: Search },
+  { path: "/", label: "Contacts", icon: Users },
+  { path: "/new-user", label: "New Contact", icon: UserPlus },
+  { path: "/utterances", label: "Search for Clips", icon: Search },
   { path: "/videos", label: "Videos", icon: Video },
   { path: "/logout", label: "Logout", icon: LogOut },
 ];

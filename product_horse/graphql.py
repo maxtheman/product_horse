@@ -319,8 +319,8 @@ class FileType(Enum):
 
 @strawberry.input
 class FileMetadataInput:
-    id: Optional[str]
-    file_name: Optional[str]
+    id: Optional[str] = None
+    file_name: str
     file_type: FileType
     resolution_x: int
     resolution_y: int
