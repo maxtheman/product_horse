@@ -65,13 +65,10 @@ export const SAVE_FILES_MUTATION = gql`
   }
 `;
 
+// no selection, boolean has no fields
 export const TRANSCRIBE_FILE_MUTATION = gql`
   mutation TranscribeFile($fileId: String!) {
-    transcribeFile(fileId: $fileId) {
-      id
-      filePath
-      fileName
-    }
+    transcribeFile(fileId: $fileId)
   }
 `;
 
