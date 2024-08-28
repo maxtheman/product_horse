@@ -1126,7 +1126,7 @@ const VideoList = () => {
         <CardFooter>
           <Button onClick={() => refetch({ requestPolicy: 'network-only' })}>
             <RotateCcw className="w-4 h-4 mr-2" />
-            Refresh Data
+            Refresh List
           </Button>
         </CardFooter>
       </Card>

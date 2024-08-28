@@ -23,6 +23,9 @@
       "types": "./dist/index.d.ts"
     }
   },
+  "engines": {
+    "node": ">=18.18.0"
+  },
   "files": [
     "dist"
   ],
@@ -39,6 +42,6 @@
   },
   "devDependencies": {
     "@types/url-parse": "1.4.4",
-    "typescript": "^4.9.5"
+    "typescript": "^5.4.5"
   }
 }
