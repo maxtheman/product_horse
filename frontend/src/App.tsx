@@ -227,6 +227,7 @@ const useStore = create<AuthStore>((set) => ({
 const SignUpForm = () => {
   const [, registerMutation] = useMutation(REGISTER_MUTATION);
   const storeToken = useStore((state) => state.storeToken);
+  const [, navigate] = useLocation();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const form = useForm<z.infer<typeof signupSchema>>({
     resolver: zodResolver(signupSchema),
@@ -243,6 +244,7 @@ const SignUpForm = () => {
     const result = await registerMutation(data);
     if (result.data) {
       storeToken(result.data.registerCompanyAndEmployee.token);
+      navigate("/");
     }
     if (result.error) {
       try {
@@ -669,9 +671,13 @@ const SaveFilesForm = ({ userId }: { userId: string }) => {
   
       const saveFilesResult = await saveFiles({ userId, fileMetadata: fileMetadataInput });
       
+      
       if (saveFilesResult.error) {
         throw new Error(saveFilesResult.error.message);
       }
+      toast("Files transcription started...", {
+        description: "Please don't leave this page yet.",
+      });
   
       const savedFiles = saveFilesResult.data.saveFiles;
   
@@ -688,6 +694,7 @@ const SaveFilesForm = ({ userId }: { userId: string }) => {
   
         // Transcribe file
         const fileToTranscribe = {
+          id: savedFile.id,
           fileName: savedFile.fileName,
           fileType: FileType.VIDEO, // Assuming it's always video, adjust if needed
           resolutionX: metadata.resolutionX,

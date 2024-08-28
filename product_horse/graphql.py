@@ -319,6 +319,7 @@ class FileType(Enum):
 
 @strawberry.input
 class FileMetadataInput:
+    id: Optional[str]
     file_name: Optional[str]
     file_type: FileType
     resolution_x: int
@@ -479,11 +480,14 @@ class Mutation:
     async def transcribe_file(
         self,
         info: strawberry.Info,
-        file_to_transcribe: FileMetadataInput,
+        file_id: str,
     ) -> bool:
-        transcribe_and_save_file = modal.Function.lookup("video_processing", "run_remote_transcribe_and_save_file")  # type: ignore
+        file_metadata = database.as_employee(info.context.employee).get_file_metadata(file_id)
+        if file_metadata is None:
+            raise Exception("File metadata is None")
+        transcribe_and_save_file = modal.Function.lookup("process-video", "run_remote_transcribe_and_save_file")  # type: ignore
         result = transcribe_and_save_file.remote(  # type: ignore    
-            file_metadata_to_save=file_to_transcribe,
+            file_metadata_to_save=file_metadata,
             employee=info.context.employee,
             jwt=info.context.jwt,
         )
@@ -557,7 +561,6 @@ class Mutation:
             remote_url = "process-video-dev" if vite_api_url.startswith("http://127.0.0.1") else "process-video"
         else:
             remote_url = "process-video"
-        make_video = modal.Function.lookup(remote_url, "run_remote_create_video")  # type: ignore
         make_video = modal.Function.lookup(remote_url, "run_remote_create_video")  # type: ignore
         size = (1920/4, 1080/4)
         make_video_status = make_video.spawn(  # type: ignore

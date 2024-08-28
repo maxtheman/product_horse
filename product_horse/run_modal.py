@@ -10,7 +10,7 @@ from .audio_video import create_video_from_utterances
 from .db import SqlModelDatabase, UtteranceSegment, FileMetadata, Employee, Transcription, UnvalidatedTranscription, UnvalidatedUtterance
 from .audio_video import AudioEditor
 from .filesystems import LocalFileSystem, R2StorageClient
-from .graphql import UtteranceSegmentInput
+from .graphql import UtteranceSegmentInput, FileMetadataInput
 from uuid import UUID
 from random import randint
 import uuid
@@ -163,7 +163,7 @@ async def run_remote_transcribe_and_save_file(
     if db_url is None:
         raise Exception("DATABASE_URL is not set")
     database = SqlModelDatabase(database_url=db_url)
-    signed_url = r2.get_signed_url(file_metadata_to_save.file_path)
+    signed_url = r2.get_signed_url(file_metadata_to_save.file_name)
     return await transcribe_and_save_file(
         db=database,
         file_metadata=file_metadata_to_save,
