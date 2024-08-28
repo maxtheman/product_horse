@@ -678,6 +678,7 @@ const SaveFilesForm = ({ userId }: { userId: string }) => {
       // Step 1 & 2: Upload files and transcribe
       const processPromises = savedFiles.map(async (savedFile: { id: string, filePath: string, fileName: string }, index: number) => {
         const file = data.files[index];
+        const metadata = fileMetadataInput[index];
         
         // Upload file
         const uploadResult = await storageClient.upload(file, savedFile.filePath, "INTERNAL");
@@ -689,10 +690,10 @@ const SaveFilesForm = ({ userId }: { userId: string }) => {
         const fileToTranscribe = {
           fileName: savedFile.fileName,
           fileType: FileType.VIDEO, // Assuming it's always video, adjust if needed
-          resolution_x: savedFile.resolutionX,
-          resolution_y: savedFile.resolutionY,
-          frame_rate: savedFile.frameRate,
-          duration: savedFile.duration,
+          resolution_x: metadata.resolutionX,
+          resolution_y: metadata.resolutionY,
+          frame_rate: metadata.frameRate,
+          duration: metadata.duration,
         };
         const transcribeResult = await transcribeFile({ fileToTranscribe });
         if (!transcribeResult.data?.transcribeFile) {
