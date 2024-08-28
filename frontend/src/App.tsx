@@ -690,9 +690,9 @@ const SaveFilesForm = ({ userId }: { userId: string }) => {
         const fileToTranscribe = {
           fileName: savedFile.fileName,
           fileType: FileType.VIDEO, // Assuming it's always video, adjust if needed
-          resolution_x: metadata.resolutionX,
-          resolution_y: metadata.resolutionY,
-          frame_rate: metadata.frameRate,
+          resolutionX: metadata.resolutionX,
+          resolutionY: metadata.resolutionY,
+          frameRate: metadata.frameRate,
           duration: metadata.duration,
         };
         const transcribeResult = await transcribeFile({ fileToTranscribe });
