@@ -675,9 +675,6 @@ const SaveFilesForm = ({ userId }: { userId: string }) => {
       if (saveFilesResult.error) {
         throw new Error(saveFilesResult.error.message);
       }
-      toast("Files transcription started...", {
-        description: "Please don't leave this page yet.",
-      });
   
       const savedFiles = saveFilesResult.data.saveFiles;
   
@@ -688,15 +685,16 @@ const SaveFilesForm = ({ userId }: { userId: string }) => {
         
         // Upload file
         const uploadResult = await storageClient.upload(file, savedFile.filePath, "INTERNAL");
+        console.log("Upload result:", savedFile.filePath);
         if (!uploadResult) {
           throw new Error(`Failed to upload file: ${savedFile.fileName}`);
         }
-  
+
         // Transcribe file
         const fileToTranscribe = {
           id: savedFile.id,
           fileName: savedFile.fileName,
-          fileType: FileType.VIDEO, // Assuming it's always video, adjust if needed
+          fileType: metadata.fileType,
           resolutionX: metadata.resolutionX,
           resolutionY: metadata.resolutionY,
           frameRate: metadata.frameRate,
@@ -708,6 +706,10 @@ const SaveFilesForm = ({ userId }: { userId: string }) => {
         }
   
         return { uploadResult, transcribeResult };
+      });
+
+      toast("Files transcription started...", {
+        description: "Please don't leave this page yet.",
       });
   
       const results = await Promise.all(processPromises);
