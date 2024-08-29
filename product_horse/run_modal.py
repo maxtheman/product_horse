@@ -156,6 +156,7 @@ async def run_remote_transcribe_and_save_file(
     API_URL = os.getenv("API_URL")
     if API_URL is None:
         raise Exception("API_URL is not set")
+    print("API_URL", API_URL)
     r2 = R2StorageClient(
         api_url=API_URL,
         base_path=str(employee.company_id),

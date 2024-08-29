@@ -4,7 +4,6 @@
 __all__ = ['run_test_case_with_pdb', 'AbstractQueue', 'InMemoryQueue', 'foo']
 
 # %% ../nbs/00_core.ipynb 3
-from typing import Callable
 import unittest
 import pdb
 

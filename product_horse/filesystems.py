@@ -354,7 +354,7 @@ class R2StorageClient(AbstractFileSystem):
     
     def sanitize_file_name(self, file_name: str) -> str:
         # Implement file name sanitization
-        pass
+        return quote(file_name)
 
     def generate_file_key(self, file_name: str, user_id: str) -> str:
         # Implement file key generation logic
@@ -370,9 +370,8 @@ class R2StorageClient(AbstractFileSystem):
 
     def generate_unique_file_name(self, original_name: str, user_id: str) -> str:
         base_name, extension = os.path.splitext(original_name)
-        sanitized_base = self.sanitize_file_name(base_name)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        unique_name =quote(f"{sanitized_base}_{timestamp}{extension}")
+        unique_name =quote(f"{base_name}_{timestamp}{extension}")
         return unique_name
 
     async def get_unique_file_key(self, original_name: str, user_id: str) -> str:
