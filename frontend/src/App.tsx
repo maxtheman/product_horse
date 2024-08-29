@@ -732,6 +732,7 @@ const SaveFilesForm = ({ userId }: { userId: string }) => {
       });
     } finally {
       setIsSubmitting(false);
+      form.setValue('files', [] as unknown as [File, ...File[]]);
     }
   };
 

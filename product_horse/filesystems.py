@@ -10,13 +10,13 @@ from pydantic import BaseModel
 from .db import User
 from dataclasses import dataclass, field
 from enum import Enum
+from urllib.parse import quote
 from abc import ABC, abstractmethod
 import shutil
 from datetime import datetime
 from contextlib import contextmanager
 
 import io
-import os
 from storage_client import StorageClient
 
 from uuid import uuid4
@@ -358,7 +358,7 @@ class R2StorageClient(AbstractFileSystem):
 
     def generate_file_key(self, file_name: str, user_id: str) -> str:
         # Implement file key generation logic
-        return f"{self.base_path}/{user_id}/{file_name}"
+        return quote(f"{self.base_path}/{user_id}/{file_name}")
 
     async def file_exists(self, file_key: str) -> bool:
         # Check if a file exists in R2
@@ -372,7 +372,7 @@ class R2StorageClient(AbstractFileSystem):
         base_name, extension = os.path.splitext(original_name)
         sanitized_base = self.sanitize_file_name(base_name)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        unique_name = f"{sanitized_base}_{timestamp}{extension}"
+        unique_name =quote(f"{sanitized_base}_{timestamp}{extension}")
         return unique_name
 
     async def get_unique_file_key(self, original_name: str, user_id: str) -> str:

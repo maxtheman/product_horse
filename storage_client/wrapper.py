@@ -2,6 +2,7 @@ import asyncio
 import io
 from dataclasses import dataclass
 from typing import Any, BinaryIO, Coroutine, Dict, List, Union, cast
+from urllib.parse import quote
 
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 from tenacity.asyncio import AsyncRetrying
@@ -237,8 +238,10 @@ class StorageClient:
         response = get_download_file_key_token.sync(client=self.client, file_key=key)
         if isinstance(response, GetDownloadFileKeyTokenResponse200):
             token = response.token
-            if token is not Unset:
-                return f"{self.base_url}download/{key}?token={token}"
+            if isinstance(token, str):
+                encoded_key = quote(key)
+                encoded_token = quote(token.encode('utf-8'))
+                return f"{self.base_url}download/{encoded_key}?token={encoded_token}"
             else:
                 raise Exception(f"Failed to get signed URL for file: {key}")
         raise Exception(f"Failed to get signed URL for file: {key}")
