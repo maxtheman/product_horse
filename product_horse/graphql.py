@@ -598,7 +598,8 @@ class Mutation:
         utterance_segments: Sequence[UtteranceSegmentInput],
         title: str,
     ) -> Video:
-        """Refactor to be an initializer and then you query a different endpoint to get the video.
+        """TODO
+        Refactor to be an initializer and then you query a different endpoint to get the video.
         Use render status appropriately.
         Mirror the v2 file upload design for this endpoint.
         1. [DONE] create_video_from_utterances is an initializer, send id and respond with a video created

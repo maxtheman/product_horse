@@ -378,7 +378,6 @@ async def upload_file(
     bucket: R2Bucket,
     d1: D1Database,
 ):
-    # TODO: store intended file visibility
     key = metadata.get("key")
     visibility = metadata.get("visibility", Visibility.PRIVATE.value)
     if not metadata.get("upload_id"):

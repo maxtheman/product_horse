@@ -22,38 +22,6 @@ BEGIN
     END LOOP;
 END $$;
 
--- Create RLS policies for each table
-CREATE OR REPLACE FUNCTION create_rls_policy(table_name text) RETURNS void AS $$
-DECLARE
-    fully_qualified_table_name text;
-BEGIN
-    -- Get the fully qualified table name (including schema)
-    SELECT format('%I.%I', schemaname, tablename)
-    INTO fully_qualified_table_name
-    FROM pg_tables
-    WHERE tablename = table_name AND schemaname = current_schema();
-
-    IF fully_qualified_table_name IS NOT NULL THEN
-        -- Drop existing policy
-        EXECUTE format('DROP POLICY IF EXISTS %I ON %s', table_name || '_policy', fully_qualified_table_name);
-        
-        -- Create new policy
-        EXECUTE format('
-            CREATE POLICY %I ON %s
-            USING (
-                (SELECT TRUE FROM (SELECT set_config(''app.current_company_id'', current_setting(''app.current_company_id''), TRUE)) AS _)
-                AND (SELECT TRUE FROM (SELECT set_config(''app.current_permission_level'', current_setting(''app.current_permission_level''), TRUE)) AS _)
-                AND company_id = current_setting(''app.current_company_id'')::uuid
-                AND current_setting(''app.current_permission_level'')::permissionlevel IN (''READ'', ''WRITE'', ''ADMIN'')
-            )
-        ', table_name || '_policy', fully_qualified_table_name);
-        RAISE NOTICE 'Created policy for table %', fully_qualified_table_name;
-    ELSE
-        RAISE NOTICE 'Table % does not exist in the current schema', table_name;
-    END IF;
-END;
-$$ LANGUAGE plpgsql;
-
 -- Apply the function to all tables
 DO $$
 DECLARE
@@ -74,36 +42,7 @@ BEGIN
     END LOOP;
 END $$;
 
--- Special case for Video table
-CREATE OR REPLACE FUNCTION create_video_rls_policy() RETURNS void AS $$
-BEGIN
-    DROP POLICY IF EXISTS video_policy ON video;
-    CREATE POLICY video_policy ON video
-    USING (
-        (company_id = current_setting('app.current_company_id')::uuid
-        AND (
-            current_setting('app.current_permission_level') = 'ADMIN'
-            OR (current_setting('app.current_permission_level')::permissionlevel = 'READ' AND visibility != 'PRIVATE')
-            OR (created_by_id = current_setting('app.current_employee_id')::uuid)
-        ))
-        OR visibility = 'PUBLIC'
-    );
-END;
-$$ LANGUAGE plpgsql;
-
 SELECT create_video_rls_policy();
-
--- Special case for Company table
-CREATE OR REPLACE FUNCTION create_rls_policy_company() RETURNS void AS $$
-BEGIN
-    DROP POLICY IF EXISTS company_policy ON company;
-    CREATE POLICY company_policy ON company
-    USING (
-        id = current_setting('app.current_company_id')::uuid
-    );
-END;
-$$ LANGUAGE plpgsql;
-
 SELECT create_rls_policy_company();
 
 -- Create non-superuser role
