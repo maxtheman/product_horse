@@ -57,7 +57,7 @@ setup_d1_local = 'npx wrangler d1 execute ph-storage-db --file=/Users/max/Docume
 setup_d1_remote = 'npx wrangler d1 execute ph-storage-db --file=/Users/max/Documents/product_horse/sql_files/setup_d1.sql --remote'
 build_storage_client = 'rye run openapi-python-client generate --path /Users/max/Documents/product_horse/workers/openapi.yaml --output-path /Users/max/Documents/product_horse/storage_client --overwrite'
 deploy_worker='npx wrangler deploy'
-export_nomedia = "grep -vE '^(pydub|moviepy|pyav|seewav|#)' requirements.lock | sed 's/;.*$//' > requirements-no-media.txt"
+export_nomedia = "grep -vE '^(pydub|moviepy|pyav|seewav|decorator|imageio|imageio-ffmpeg|setuptools|#)' requirements.lock | sed 's/;.*$//' > requirements-no-media.txt"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

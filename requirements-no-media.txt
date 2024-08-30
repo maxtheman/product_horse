@@ -52,7 +52,6 @@ click==8.1.7
 dataclasses-json==0.6.7
     # via llama-index-core
     # via llama-index-legacy
-decorator==4.4.2
     # via moviepy
 deprecated==1.2.14
     # via llama-index-core
@@ -121,9 +120,7 @@ idna==3.8
     # via httpx
     # via requests
     # via yarl
-imageio==2.35.1
     # via moviepy
-imageio-ffmpeg==0.5.1
     # via moviepy
 importlib-metadata==8.4.0
     # via litellm
@@ -324,7 +321,6 @@ rpds-py==0.20.0
 rsa==4.9
     # via google-auth
 scipy==1.14.1
-setuptools==74.0.0
     # via imageio-ffmpeg
 shellingham==1.5.4
     # via typer

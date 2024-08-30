@@ -120,7 +120,8 @@ def decode_jwt(token: str) -> JwtPayload:
         raise InvalidTokenError
     if "company_id" not in payload:
         raise InvalidTokenError
-    if datetime.fromtimestamp(payload["exp"]) < datetime.now(timezone.utc):
+    exp_timestamp = datetime.fromtimestamp(payload["exp"], tz=timezone.utc)
+    if exp_timestamp < datetime.now(timezone.utc):
         raise InvalidTokenError
     return payload
 
@@ -248,9 +249,6 @@ async def run_remote_transcribe_and_save_file(
     employee: Employee,
     jwt: str,
 ) -> Transcription:
-    API_URL: str | None = os.getenv("API_URL")
-    if API_URL is None:
-        raise Exception("API_URL is not set")
     r2 = R2StorageClient(
         api_url=API_URL,
         base_path=str(employee.company_id),
@@ -533,7 +531,7 @@ class Mutation:
         file_id: str,
         file_status: FileStatus,
     ) -> FileMetadata:
-        return database.as_employee(info.context.employee).update_file_metadata_status(file_id, {"file_status": file_status})  # type: ignore
+        return database.as_employee(info.context.employee).update_file_metadata(file_id, {"file_status": file_status})  # type: ignore
 
     @strawberry.mutation(permission_classes=[IsAuthenticated])
     @retry_on_operational_error

@@ -37,4 +37,4 @@ RUN PYTHONDONTWRITEBYTECODE=1 pip install -r requirements-no-media.txt
 
 EXPOSE 8000
 
-CMD ["dotenvx", "run", "-f", ".env.production", "--", "fastapi", "run", "--workers", "4", "product_horse/graphql.py"]
+CMD ["dotenvx", "run", "-f", ".env.production", "--", "fastapi", "run", "--workers", "3", "product_horse/graphql.py"]
