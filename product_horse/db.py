@@ -1624,7 +1624,6 @@ import subprocess
 import urllib.parse
 import logging
 
-logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 def setup_test_db(postgres: PostgresContainer, load_data: bool = True):

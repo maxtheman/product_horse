@@ -1,4 +1,4 @@
-import { REGISTER_MUTATION, SAVE_USER_MUTATION, GET_USERS_QUERY, GET_UTTERANCES_QUERY, GET_TRANSCRIPT_QUERY, CREATE_VIDEO_MUTATION, GET_ALL_VIDEOS_QUERY, GET_VIDEO_QUERY, LOGIN_MUTATION, SAVE_FILES_MUTATION, TRANSCRIBE_FILE_MUTATION } from "./graphql";
+import { REGISTER_MUTATION, SAVE_USER_MUTATION, GET_USERS_QUERY, GET_UTTERANCES_QUERY, GET_TRANSCRIPT_QUERY, CREATE_VIDEO_MUTATION, GET_ALL_VIDEOS_QUERY, GET_VIDEO_QUERY, LOGIN_MUTATION, SAVE_FILES_MUTATION, TRANSCRIBE_FILE_MUTATION, UPDATE_FILE_METADATA_STATUS_MUTATION } from "./graphql";
 import { tokenManager } from "@/utils/tokenManager";
 import { create } from 'zustand'
 import { Button } from "@/components/ui/button"
@@ -572,18 +572,13 @@ const UserList = () => {
   );
 };
 
-enum FileType {
-  VIDEO = "VIDEO",
-  AUDIO = "AUDIO",
-  TEXT = "TEXT"
-}
-
 const SaveFilesForm = ({ userId }: { userId: string }) => {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [videoSuccess, setVideoSuccess] = useState(false);
   const [, navigate] = useLocation();
 
   const [, saveFiles] = useMutation(SAVE_FILES_MUTATION);
+  const [, updateFileMetadataStatus] = useMutation(UPDATE_FILE_METADATA_STATUS_MUTATION);
   const [, transcribeFile] = useMutation(TRANSCRIBE_FILE_MUTATION);
 
   const jwtToken = tokenManager.get() ?? '';
@@ -668,28 +663,33 @@ const SaveFilesForm = ({ userId }: { userId: string }) => {
           duration: metadata.duration,
         };
       }));
-  
+
       const saveFilesResult = await saveFiles({ userId, fileMetadata: fileMetadataInput });
-      
-      
+
+
       if (saveFilesResult.error) {
         throw new Error(saveFilesResult.error.message);
       }
-  
+
       const savedFiles = saveFilesResult.data.saveFiles;
-  
+
       // Step 1 & 2: Upload files and transcribe
       const processPromises = savedFiles.map(async (savedFile: { id: string, filePath: string, fileName: string }, index: number) => {
         const file = data.files[index];
         const metadata = fileMetadataInput[index];
-        
+
         // Upload file
         const uploadResult = await storageClient.upload(file, savedFile.filePath, "INTERNAL");
         console.log("Upload result:", savedFile.filePath);
         if (!uploadResult) {
+          await updateFileMetadataStatus({ fileId: savedFile.id, fileStatus: "upload_failed" });
           throw new Error(`Failed to upload file: ${savedFile.fileName}`);
         }
 
+        await updateFileMetadataStatus({ fileId: savedFile.id, fileStatus: "upload_finished" });
+        toast("File uploaded successfully", {
+          description: "File uploaded successfully. Transcribing...",
+        });
         // Transcribe file
         const fileToTranscribe = {
           id: savedFile.id,
@@ -700,22 +700,27 @@ const SaveFilesForm = ({ userId }: { userId: string }) => {
           frameRate: metadata.frameRate,
           duration: metadata.duration,
         };
+        await updateFileMetadataStatus({ fileId: savedFile.id, fileStatus: "transcribe_started" });
         const transcribeResult = await transcribeFile({ fileId: fileToTranscribe.id });
         if (!transcribeResult.data?.transcribeFile) {
+          await updateFileMetadataStatus({ fileId: savedFile.id, fileStatus: "transcribe_failed" });
+          toast("File transcription failed", {
+            description: "File transcription failed. Please try again.",
+          });
           throw new Error(`Failed to transcribe file: ${savedFile.fileName}`);
         }
-  
+
+        await updateFileMetadataStatus({ fileId: savedFile.id, fileStatus: "transcribe_finished" });
+
         return { uploadResult, transcribeResult };
       });
 
-      toast("Files transcription started...", {
-        description: "Please don't leave this page yet.",
-      });
-  
-      const results = await Promise.all(processPromises);
-      console.log("Processing results:", results);
-  
+      await Promise.all(processPromises);
+
       setVideoSuccess(true);
+      for (const file of savedFiles) {
+        await updateFileMetadataStatus({ fileId: file.id, fileStatus: "active" });
+      }
       form.reset();
       toast("Files uploaded and transcribed successfully", {
         description: `${savedFiles.length} file(s) processed. Ready to create videos.`,
@@ -1053,8 +1058,8 @@ const GetUtterancesForm = () => {
                 )}
               </div>
             )}
-          {videoCreated && <p className="mt-4 text-green-500">Video job created successfully! Check the video list for updates.</p>}
-          {utterancesResult.error && <p className="mt-4 text-red-500">{utterancesResult.error.graphQLErrors[0].message}</p>}
+            {videoCreated && <p className="mt-4 text-green-500">Video job created successfully! Check the video list for updates.</p>}
+            {utterancesResult.error && <p className="mt-4 text-red-500">{utterancesResult.error.graphQLErrors[0].message}</p>}
           </CardContent>
         </Card>
       )}

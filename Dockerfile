@@ -26,12 +26,7 @@ COPY storage_client ./storage_client
 COPY scripts/setup_env.py ./setup_env.py
 COPY sql_files ./sql_files
 COPY .env.production .
-RUN PYTHONDONTWRITEBYTECODE=1 pip install -r requirements.lock
-
-# Run setup script
-RUN --mount=type=secret,id=dotenv_key \
-    export DOTENV_PRIVATE_KEY_PRODUCTION=$(cat /run/secrets/dotenv_key) && \
-    dotenvx run -f .env.production -- python setup_env.py
+RUN PYTHONDONTWRITEBYTECODE=1 pip install --no-cache-dir -r requirements.lock
 
 EXPOSE 8000
 

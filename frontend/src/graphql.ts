@@ -61,9 +61,20 @@ export const SAVE_FILES_MUTATION = gql`
       id
       filePath
       fileName
+      fileStatus
     }
   }
 `;
+
+export const UPDATE_FILE_METADATA_STATUS_MUTATION = gql`
+  mutation UpdateFileMetadataStatus($fileId: String!, $fileStatus: FileStatus!) {
+    updateFileMetadataStatus(fileId: $fileId, fileStatus: $fileStatus) {
+      id
+      fileStatus
+    }
+  }
+`;
+
 
 // no selection, boolean has no fields
 export const TRANSCRIBE_FILE_MUTATION = gql`

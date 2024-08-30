@@ -9,7 +9,7 @@ __all__ = ['API_URL', 'database_url', 'database_superuser_url', 'secret', 'datab
            'Clip', 'Video', 'Company', 'FileMetadata', 'Transcription', 'RegisterCompanySuccess', 'FileType',
            'FileMetadataInput', 'LoginSuccess', 'Query', 'Mutation', 'get_context']
 
-# %% ../nbs/09_graphql.ipynb 3
+# %% ../nbs/09_graphql.ipynb 4
 from typing import (
     Annotated,
     Any,
@@ -51,7 +51,7 @@ from product_horse.db import (
     FileMetadata,
     UnvalidatedFileMetadata,
     Transcription,
-    UtteranceSegment,
+    FileStatus,
     UnvalidatedTranscription,
     UnvalidatedUtterance,
     FileType as DbFileType,
@@ -79,11 +79,11 @@ import os
 if not os.getenv("DATABASE_URL"):
     load_dotenv()
 
-# %% ../nbs/09_graphql.ipynb 5
+# %% ../nbs/09_graphql.ipynb 6
 API_URL = "https://storage.producthorse.workers.dev/"  # or localhost:8787 - but won't work with transcription
 # API_URL = "http://localhost:8787"
 
-# %% ../nbs/09_graphql.ipynb 6
+# %% ../nbs/09_graphql.ipynb 7
 database_url = os.getenv("DATABASE_URL")
 database_superuser_url = os.getenv("DATABASE_SUPERUSER_URL")
 if database_url is None or database_superuser_url is None:
@@ -198,7 +198,7 @@ def handle_form_validation_errors(
 
     return wrapper
 
-# %% ../nbs/09_graphql.ipynb 8
+# %% ../nbs/09_graphql.ipynb 9
 # Something is wrong with this retry -- doesn't help, just adds latency
 
 
@@ -267,7 +267,7 @@ async def run_remote_transcribe_and_save_file(
         employee=employee,
     )
 
-# %% ../nbs/09_graphql.ipynb 10
+# %% ../nbs/09_graphql.ipynb 11
 PermissionsLevel = strawberry.enum(DbPermissionLevel)
 
 
@@ -399,7 +399,7 @@ LoginResponse = Annotated[
     strawberry.union("LoginResponse"),
 ]
 
-# %% ../nbs/09_graphql.ipynb 12
+# %% ../nbs/09_graphql.ipynb 13
 @strawberry.type
 class Query:
     employee: Employee
@@ -470,7 +470,7 @@ class Query:
     def get_all_videos(self, info: strawberry.Info) -> Sequence[Video]:
         return database.as_employee(info.context.employee).get_all_videos()  # type: ignore
 
-# %% ../nbs/09_graphql.ipynb 14
+# %% ../nbs/09_graphql.ipynb 15
 @strawberry.type
 class Mutation:
     """
@@ -634,7 +634,7 @@ class Mutation:
             file_path="",
         )  # type: ignore
 
-# %% ../nbs/09_graphql.ipynb 15
+# %% ../nbs/09_graphql.ipynb 16
 async def get_context() -> Context:
     return Context()
 

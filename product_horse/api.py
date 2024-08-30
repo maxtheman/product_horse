@@ -4,7 +4,7 @@
 __all__ = ['FileDict', 'get_relevant_utterances_from_query', 'save_files_and_transcriptions',
            'get_user_names_and_transcript_counts']
 
-# %% ../nbs/08_api.ipynb 3
+# %% ../nbs/08_api.ipynb 4
 from typing import Any, List, TypedDict, Tuple, Sequence
 from product_horse.filesystems import (
     AbstractFileSystem,
@@ -33,7 +33,7 @@ from product_horse.audio_video import (
 )
 from .search import SearchEngine
 
-# %% ../nbs/08_api.ipynb 4
+# %% ../nbs/08_api.ipynb 5
 class FileDict(TypedDict):
     content: bytes
     name: str
@@ -84,7 +84,7 @@ def _create_user_and_add_files(
 
     return user, metadata
 
-# %% ../nbs/08_api.ipynb 5
+# %% ../nbs/08_api.ipynb 6
 async def _transcribe_file_and_extract_speakers(
     file_metadata: FileMetadata,
     db: AbstractDatabase[DBType],
@@ -125,7 +125,7 @@ async def _transcribe_file_and_extract_speakers(
 
     return transcription, speaker_names
 
-# %% ../nbs/08_api.ipynb 8
+# %% ../nbs/08_api.ipynb 9
 async def get_relevant_utterances_from_query(
     query: str,
     transcripts: Sequence[Transcription],
@@ -144,7 +144,7 @@ async def get_relevant_utterances_from_query(
 
     return utterances
 
-# %% ../nbs/08_api.ipynb 9
+# %% ../nbs/08_api.ipynb 10
 async def save_files_and_transcriptions(
     user_id: str,
     user_name: str,
@@ -172,7 +172,7 @@ async def save_files_and_transcriptions(
         transcriptions.append(transcription)
     return f"{len(transcriptions)} transcriptions saved."
 
-# %% ../nbs/08_api.ipynb 11
+# %% ../nbs/08_api.ipynb 12
 def get_user_names_and_transcript_counts(
     db: AbstractDatabase[DBType],
 ) -> Sequence[tuple[str, str]]:

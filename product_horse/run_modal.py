@@ -4,7 +4,7 @@
 __all__ = ['api_key', 'audio_editor', 'app', 'image', 'run_remote_create_video', 'transcribe_and_save_file',
            'run_remote_transcribe_and_save_file']
 
-# %% ../nbs/06_run_modal.ipynb 4
+# %% ../nbs/06_run_modal.ipynb 5
 import modal
 from .audio_video import create_video_from_utterances
 from .db import SqlModelDatabase, UtteranceSegment, FileMetadata, Employee, Transcription, UnvalidatedTranscription, UnvalidatedUtterance
@@ -18,7 +18,7 @@ import os
 from typing import Tuple, List
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-# %% ../nbs/06_run_modal.ipynb 5
+# %% ../nbs/06_run_modal.ipynb 6
 api_key = os.getenv("ASSEMBLYAI_API_KEY")
 if not api_key:
     raise ValueError("ASSEMBLYAI_API_KEY environment variable not found")
