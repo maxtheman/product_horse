@@ -1,6 +1,6 @@
-from uuid import uuid4, UUID
+from uuid import UUID
+from sqlmodel import SQLModel
 from sqlalchemy import text
-from sqlmodel import Session, select
 from passlib.hash import pbkdf2_sha256
 from product_horse.db import (  # Replace 'your_module' with the actual module name
     SqlModelDatabase,
