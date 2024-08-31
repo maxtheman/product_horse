@@ -1,0 +1,1 @@
+grep -vE '^(pydub|moviepy|pyav|seewav|decorator|imageio|imageio-ffmpeg|setuptools|#)' requirements.lock | sed 's/;.*$//' > requirements-no-media.txt
