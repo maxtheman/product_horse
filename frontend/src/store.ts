@@ -1,8 +1,28 @@
 import { create } from "zustand";
 import { Client, OperationResult } from "urql";
-import { REGISTER_MUTATION, LOGIN_MUTATION } from "./graphql";
+import {
+    REGISTER_MUTATION,
+    LOGIN_MUTATION,
+    GET_USERS_QUERY,
+    SAVE_USER_MUTATION
+} from "./graphql";
 import { SignupFormData, LoginFormData, FormError } from "./types";
 
+interface User {
+    id: string;
+    name: string;
+}
+
+interface Users {
+    loaded: boolean;
+    users: User[];
+    errors: string[] | null;
+}
+
+interface UserFormData {
+    userName: string;
+    externalId: string | null;
+}
 
 interface MainStore {
     authToken: string | null;
@@ -12,6 +32,9 @@ interface MainStore {
     removeAuthToken: () => void;
     signup: (client: Client, data: SignupFormData) => Promise<FormError[]>;
     login: (client: Client, data: LoginFormData) => Promise<FormError[]>;
+    users: Users;
+    getUsers: (client: Client) => Promise<void>;
+    addUser: (client: Client, data: UserFormData) => Promise<FormError[]>;
 }
 
 function handleForm<T>(result: OperationResult<T, object>, callback: (data: T) => void): FormError[] {
@@ -41,6 +64,7 @@ const useMainStore = create<MainStore>((set, get) => ({
     authToken: null,
     isSubmittingForm: false,
     setAuthToken: (token: string) => {
+        document.cookie = `jwt=${token}; max-age=86400; domain=${window.location.hostname}; path=/; SameSite=Strict; Secure`;
         set({ authToken: token });
     },
     removeAuthToken: () => {
@@ -63,8 +87,34 @@ const useMainStore = create<MainStore>((set, get) => ({
             get().setAuthToken(data.LoginSuccess.token)
         })
         set({ isSubmittingForm: false });
+        if (formErrors.length === 0) {
+            get().getUsers(client).catch(console.error);
+        }
         return formErrors
     },
+    users: {
+        loaded: false,
+        users: [],
+        errors: null
+    },
+    getUsers: async (client: Client) => {
+        set({ users: { loaded: false, users: [], errors: null } });
+        const result = await client.query(GET_USERS_QUERY, {}).toPromise();
+        set({ users: {
+            loaded: true,
+            users: result.data.getUsers,
+            errors: result.error?.graphQLErrors.map((error) => error.message) || null
+        } });
+    },
+    addUser: async (client: Client, data: UserFormData) => {
+        set({ isSubmittingForm: true });
+        const result = await client.mutation(SAVE_USER_MUTATION, data).toPromise();
+        const formErrors = handleForm(result, () => {
+            get().getUsers(client).catch(console.error);
+        })
+        set({ isSubmittingForm: false });
+        return formErrors
+    }
 }));
 
 export default useMainStore;

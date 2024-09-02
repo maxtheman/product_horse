@@ -2,50 +2,35 @@ import { useLocation } from "wouter"
 import { useForm } from "react-hook-form"
 import { z } from "zod"
 import { zodResolver } from "@hookform/resolvers/zod"
-import { useState } from "react"
 import { PulsingButton } from "@/components/PulsingButton"
-import { useMutation } from 'urql';
-import { SAVE_USER_MUTATION } from "@/graphql";
+import { useClient } from 'urql';
 import { AnimatedErrorMessage } from "@/components/AnimatedErrorMessage"
 import { Form, FormField, FormLabel } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
-import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
-import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card"
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card"
 import { UserPlus, ArrowLeft } from "lucide-react"
 import { FormItem, FormControl } from "@/components/ui/form"
+import useMainStore from "@/store";
+import { handleFormErrors } from "@/utils/handleFormErrors"
 
-const userSchema = z.object({ userName: z.string().min(2), externalId: z.string().optional() })
+const userSchema = z.object({ userName: z.string().min(2), externalId: z.string().nullable() })
 
 const NewUserForm = () => {
-    // Not saved to MainAppStore as this is a temporary form for adding a new user
-    const [, saveUser] = useMutation(SAVE_USER_MUTATION)
-    const [userId, setUserId] = useState('')
-    const [isSubmitting, setIsSubmitting] = useState(false);
+    const client = useClient();
+    const { addUser, isSubmittingForm } = useMainStore();
     const [, navigate] = useLocation();
     const form = useForm<z.infer<typeof userSchema>>({
         resolver: zodResolver(userSchema),
-        defaultValues: { userName: "", externalId: "" },
+        defaultValues: { userName: "", externalId: null },
     })
 
     const onSubmit = async (data: z.infer<typeof userSchema>) => {
-        setIsSubmitting(true);
-        const result = await saveUser(data)
-        if (result.data) {
-            setUserId(result.data.saveUser.id)
+        const formErrors = await addUser(client, data)
+        handleFormErrors(formErrors, form, ["userName", "externalId"])
+        if (formErrors.length === 0) {
             form.reset()
-            toast("User created successfully", {
-                description: `User ID: ${result.data.saveUser.id}`,
-                action: {
-                    label: "View User",
-                    onClick: () => navigate(`/users/${result.data.saveUser.id}`),
-                },
-            });
         }
-        if (result.error) {
-            form.setError("root", { type: 'custom', message: result.error.graphQLErrors[0].message })
-        }
-        setIsSubmitting(false);
     }
 
     return (
@@ -71,9 +56,9 @@ const NewUserForm = () => {
                                 name="userName"
                                 render={({ field }) => (
                                     <FormItem>
-                                        <FormLabel htmlFor="userName">User Name</FormLabel>
+                                        <FormLabel htmlFor="userName">Name</FormLabel>
                                         <FormControl>
-                                            <Input id="userName" placeholder="John Doe" {...field} />
+                                            <Input id="userName" placeholder="John Doe" {...field} value={field.value ?? ''} />
                                         </FormControl>
                                         <AnimatedErrorMessage message={form.formState.errors.userName?.message} />
                                     </FormItem>
@@ -86,25 +71,18 @@ const NewUserForm = () => {
                                     <FormItem>
                                         <FormLabel htmlFor="externalId">External ID (Optional)</FormLabel>
                                         <FormControl>
-                                            <Input id="externalId" placeholder="crm_id_12345" {...field} />
+                                            <Input id="externalId" placeholder="crm_id_12345" {...field} value={field.value ?? ''} />
                                         </FormControl>
                                         <AnimatedErrorMessage message={form.formState.errors.externalId?.message} />
                                     </FormItem>
                                 )}
                             />
-                            <PulsingButton type="submit" className="w-full" isSubmitting={isSubmitting}>
-                                {isSubmitting ? "Saving..." : <><UserPlus className="w-4 h-4 mr-2" />Save User</>}
+                            <PulsingButton type="submit" className="w-full" isSubmitting={isSubmittingForm}>
+                                {isSubmittingForm ? "Saving" : <><UserPlus className="w-4 h-4 mr-2" />Save User</>}
                             </PulsingButton>
                         </form>
                     </Form>
                 </CardContent>
-                {userId && (
-                    <CardFooter>
-                        <div className="w-full p-4 text-green-700 bg-green-100 rounded-md">
-                            User Created! User ID: {userId}
-                        </div>
-                    </CardFooter>
-                )}
             </Card>
         </div>
     )

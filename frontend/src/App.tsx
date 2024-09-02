@@ -1,4 +1,4 @@
-import {GET_USERS_QUERY, GET_UTTERANCES_QUERY, GET_TRANSCRIPT_QUERY, CREATE_VIDEO_MUTATION, GET_ALL_VIDEOS_QUERY, GET_VIDEO_QUERY, SAVE_FILES_MUTATION, TRANSCRIBE_FILE_MUTATION, UPDATE_FILE_METADATA_STATUS_MUTATION } from "./graphql";
+import {GET_UTTERANCES_QUERY, GET_TRANSCRIPT_QUERY, CREATE_VIDEO_MUTATION, GET_ALL_VIDEOS_QUERY, GET_VIDEO_QUERY, SAVE_FILES_MUTATION, TRANSCRIBE_FILE_MUTATION, UPDATE_FILE_METADATA_STATUS_MUTATION } from "./graphql";
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -11,8 +11,8 @@ import { toast } from "sonner"
 import { Form, FormField, FormItem, FormLabel, FormControl } from "@/components/ui/form"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card"
-import { useMutation, useQuery } from 'urql';
-import { useEffect, useCallback, useState, useRef } from "react";
+import { useMutation, useQuery, useClient } from 'urql';
+import { useEffect, useState, useRef } from "react";
 import { z } from "zod"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm, Controller } from "react-hook-form"
@@ -55,6 +55,7 @@ import useMainStore from "@/store";
 import LoginForm from "@/components/auth/LoginForm";
 import SignUpForm from "@/components/auth/SignupForm";
 import NewUserForm from "@/components/users/NewUser";
+import Logout from "@/components/auth/Logout";
 
 // TODOS:
 // - Add a progress bar to the uploader and move the upload logic to zustand state
@@ -74,17 +75,21 @@ const fileSchema = z.object({
 })
 
 const UserList = () => {
-  const [result] = useQuery({ query: GET_USERS_QUERY });
   const [, navigate] = useLocation();
+  const { users, getUsers } = useMainStore();
+  const client = useClient();
+  useEffect(() => {
+    getUsers(client)
+  }, [])
 
-  if (result.fetching) return (
+  if (!users.loaded) return (
     <div className="space-y-2">
       <Skeleton className="w-full h-10" />
       <Skeleton className="w-full h-10" />
       <Skeleton className="w-full h-10" />
     </div>
   );
-  if (result.error) return <AnimatedErrorMessage message={result.error.message} />
+  if (users.errors) return <AnimatedErrorMessage message={users.errors.join(", ")} />
 
   return (
     <div className="container py-10 mx-auto">
@@ -95,7 +100,7 @@ const UserList = () => {
           Add Contact
         </Button>
       </div>
-      {result.data.getUsers.length === 0 ? (
+      {users.users.length === 0 ? (
         <EmptyState showAddUser={true} showUploadResearch={false} showAskQuestion={false} />
       ) : (
         <Card>
@@ -113,7 +118,7 @@ const UserList = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {result.data.getUsers.map((user: { id: string; name: string }) => (
+                {users.users.map((user: { id: string; name: string }) => (
                   <TableRow key={user.id}>
                     <TableCell className="font-medium">{user.name}</TableCell>
                     <TableCell>{user.id}</TableCell>
@@ -998,44 +1003,6 @@ const Navigation = () => {
       </NavigationMenuList>
     </NavigationMenu>
   );
-};
-
-const Logout = () => {
-  const setToken = useMainStore((state) => state.setAuthToken);
-  const [, navigate] = useLocation();
-  const [showConfirmation, setShowConfirmation] = useState(true);
-
-  const handleLogout = useCallback(() => {
-    setToken("");
-    navigate("/");
-  }, [setToken, navigate]);
-
-  useEffect(() => {
-    if (!showConfirmation) {
-      handleLogout();
-    }
-  }, [showConfirmation, handleLogout]);
-
-  if (showConfirmation) {
-    return (
-      <Card className="w-full max-w-md mx-auto mt-8">
-        <CardHeader>
-          <CardTitle>Confirm Logout</CardTitle>
-          <CardDescription>Are you sure you want to log out?</CardDescription>
-        </CardHeader>
-        <CardContent className="flex justify-end space-x-4">
-          <Button variant="outline" onClick={() => navigate("/")}>
-            Cancel
-          </Button>
-          <Button onClick={() => setShowConfirmation(false)}>
-            Yes, Log Out
-          </Button>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  return <>Logging out...</>;
 };
 
 const AppRouter = ({ token }: { token: string }) => {
