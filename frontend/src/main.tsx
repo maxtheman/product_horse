@@ -1,9 +1,9 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Client, cacheExchange, fetchExchange, Provider } from 'urql';
-import { tokenManager } from './utils/tokenManager';
-import App from './App.tsx'
-import './index.css'
+import useMainStore from '@/store';
+import App from '@/App'
+import '@/index.css'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/graphql';
 
@@ -12,7 +12,7 @@ const client = new Client({
   url: API_URL,
   exchanges: [cacheExchange, fetchExchange],
   fetchOptions: () => {
-    const token = tokenManager.get();
+    const token = useMainStore.getState().getAuthToken();
     return {
       headers: { authorization: token ? `Bearer ${token}` : '' },
     };

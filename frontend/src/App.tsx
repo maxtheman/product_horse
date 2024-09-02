@@ -1,6 +1,4 @@
-import { REGISTER_MUTATION, SAVE_USER_MUTATION, GET_USERS_QUERY, GET_UTTERANCES_QUERY, GET_TRANSCRIPT_QUERY, CREATE_VIDEO_MUTATION, GET_ALL_VIDEOS_QUERY, GET_VIDEO_QUERY, LOGIN_MUTATION, SAVE_FILES_MUTATION, TRANSCRIBE_FILE_MUTATION, UPDATE_FILE_METADATA_STATUS_MUTATION } from "./graphql";
-import { tokenManager } from "@/utils/tokenManager";
-import { create } from 'zustand'
+import {GET_USERS_QUERY, GET_UTTERANCES_QUERY, GET_TRANSCRIPT_QUERY, CREATE_VIDEO_MUTATION, GET_ALL_VIDEOS_QUERY, GET_VIDEO_QUERY, SAVE_FILES_MUTATION, TRANSCRIBE_FILE_MUTATION, UPDATE_FILE_METADATA_STATUS_MUTATION } from "./graphql";
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -13,7 +11,7 @@ import { toast } from "sonner"
 import { Form, FormField, FormItem, FormLabel, FormControl } from "@/components/ui/form"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card"
-import { useMutation, useQuery, useClient, Client } from 'urql';
+import { useMutation, useQuery } from 'urql';
 import { useEffect, useCallback, useState, useRef } from "react";
 import { z } from "zod"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -37,11 +35,9 @@ import {
   LogOut,
   CircleDot,
   FileUp,
-  ChevronRight,
   PlusCircle,
   Eye,
   ArrowLeft,
-  Loader2,
   Play,
   Pause,
   RotateCcw,
@@ -52,475 +48,18 @@ import {
 import { Slider } from "@/components/ui/slider"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useLocation, Router, Switch, Route, Link } from "wouter"
+import { PulsingButton } from "@/components/PulsingButton";
+import { AnimatedErrorMessage } from "@/components/AnimatedErrorMessage";
+import { EmptyState } from "@/components/EmptyState";
+import useMainStore from "@/store";
+import LoginForm from "@/components/auth/LoginForm";
+import SignUpForm from "@/components/auth/SignupForm";
+import NewUserForm from "@/components/users/NewUser";
 
 // TODOS:
 // - Add a progress bar to the uploader and move the upload logic to zustand state
 
-// HELPERS
-interface AnimatedErrorMessageProps {
-  message?: string;
-}
-
-const AnimatedErrorMessage: React.FC<AnimatedErrorMessageProps> = ({ message }) => {
-  return (
-    <AnimatePresence>
-      {message && (
-        <motion.div
-          initial={{ opacity: 0, height: 0 }}
-          animate={{ opacity: 1, height: 'auto' }}
-          exit={{ opacity: 0, height: 0 }}
-          transition={{ duration: 0.3 }}
-          className="text-sm text-red-500"
-        >
-          {message}
-        </motion.div>
-      )}
-    </AnimatePresence>
-  );
-};
-
-const AnimatedEllipsis = () => {
-  return (
-    <span className="inline-flex">
-      <motion.span
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.3, repeat: Infinity, repeatType: "reverse", delay: 0 }}
-      >
-        .
-      </motion.span>
-      <motion.span
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.3, repeat: Infinity, repeatType: "reverse", delay: 0.1 }}
-      >
-        .
-      </motion.span>
-      <motion.span
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.3, repeat: Infinity, repeatType: "reverse", delay: 0.2 }}
-      >
-        .
-      </motion.span>
-    </span>
-  )
-}
-
-// Add this new component for the pulsing button
-const PulsingButton = ({ children, isSubmitting, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { isSubmitting: boolean }) => {
-  return (
-    <Button
-      {...props}
-      disabled={isSubmitting}
-      className={cn(
-        props.className,
-        isSubmitting && "relative overflow-hidden"
-      )}
-    >
-      <span className={cn("flex items-center justify-center", isSubmitting && "invisible")}>
-        {children}
-      </span>
-      {isSubmitting && (
-        <span className="absolute inset-0 flex items-center justify-center">
-          <span className="absolute inset-0"></span>
-          <span className="z-10 flex items-center justify-center animate-pulse">
-            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-            {children}
-            <AnimatedEllipsis />
-          </span>
-        </span>
-      )}
-    </Button>
-  )
-}
-
-interface EmptyStateProps {
-  showAddUser?: boolean;
-  showUploadResearch?: boolean;
-  showAskQuestion?: boolean;
-}
-
-const EmptyState = ({ showAddUser = true, showUploadResearch = true, showAskQuestion = true }: EmptyStateProps) => {
-  const [, navigate] = useLocation();
-  const numberVisibleButtons = Number(showAddUser) + Number(showUploadResearch) + Number(showAskQuestion);
-  const gridColsClass = () => {
-    switch (numberVisibleButtons) {
-      case 1: return "md:grid-cols-1";
-      case 2: return "md:grid-cols-2";
-      case 3: return "md:grid-cols-3";
-      default: return "md:grid-cols-1";
-    }
-  };
-  const variantClasses = () => {
-    switch (numberVisibleButtons) {
-      case 1: return ['default', 'default', 'default'];
-      case 2: return ['default', 'outline', 'default'];
-      case 3: return ['default', 'outline', 'secondary'];
-      default: return ['default', 'outline', 'secondary'];
-    }
-  }
-  return (
-    <Card className={`w-full max-w-4xl mx-auto ${variantClasses()}`}>
-      <CardHeader>
-        <CardTitle className="text-4xl font-bold tracking-tight">Welcome to Product Horse</CardTitle>
-        <CardDescription className="text-xl">
-          Streamline your product research, create insightful videos, and manage your team efficiently.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className={`grid grid-cols-1 gap-4 ${gridColsClass()}`}>
-          {showAddUser && (
-            <Button className="justify-between w-full" size="lg" variant={variantClasses()[0] as "default" | "outline" | "secondary"} onClick={() => navigate("/new-user")}>
-              <span className="flex items-center">
-                <UserPlus className="w-5 h-5 mr-2" />
-                Add New User
-              </span>
-              <ChevronRight className="w-5 h-5" />
-            </Button>
-          )}
-          {showUploadResearch && (
-            <Button className="justify-between w-full" variant={variantClasses()[1] as "default" | "outline" | "secondary"} size="lg" onClick={() => navigate("/")}>
-              <span className="flex items-center">
-                <FileUp className="w-5 h-5 mr-2" />
-                Upload User Research
-              </span>
-              <ChevronRight className="w-5 h-5" />
-            </Button>
-          )}
-          {showAskQuestion && (
-            <Button className="justify-between w-full" variant={variantClasses()[2] as "default" | "outline" | "secondary"} size="lg" onClick={() => navigate("/utterances")}>
-              <span className="flex items-center">
-                <Search className="w-5 h-5 mr-2" />
-                Ask a Question
-              </span>
-              <ChevronRight className="w-5 h-5" />
-            </Button>
-          )}
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
-
 // AUTHENTICATION
-
-const signupSchema = z.object({
-  name: z.string().min(2),
-  email: z.string().email(),
-  password: z.string().min(8),
-  companyName: z.string().min(1),
-});
-
-type SignupFormData = z.infer<typeof signupSchema>;
-type FormError = { field: string; type: string; message: string }
-
-
-interface MainStore {
-  authToken: string;
-  isSubmittingForm: boolean;
-  storeAuthToken: (token: string) => void;
-  signup: (client: Client, data: SignupFormData) => Promise<FormError[]>;
-}
-
-const useMainStore = create<MainStore>((set, get) => ({
-  authToken: tokenManager.get() ?? '',
-  isSubmittingForm: false,
-  storeAuthToken: (token: string) => {
-    tokenManager.set(token);
-    set({ authToken: token });
-  },
-  signup: async (client: Client, data: SignupFormData) => {
-    set({ isSubmittingForm: true });
-    let formErrors: FormError[] = []
-    const result = await client.mutation(REGISTER_MUTATION, data).toPromise();
-    set({ isSubmittingForm: false });
-    if (result.data) {
-      get().storeAuthToken(result.data.registerCompanyAndEmployee.token)
-      return formErrors
-    } 
-    if (result.error) {
-      try {
-        formErrors = result.error.graphQLErrors.map((error) => ({ field: error.path?.[0].toString() || 'root', type: 'custom', message: error.message }));
-        return formErrors
-      } catch {
-        formErrors = [{ field: 'root', type: 'custom', message: "An error occurred" }]
-        return formErrors
-      }
-    }
-    return formErrors
-  },
-}));
-
-const SignUpForm = () => {
-  const client = useClient();
-  const { signup, isSubmittingForm } = useMainStore();
-  const [, navigate] = useLocation();
-  const form = useForm<z.infer<typeof signupSchema>>({
-    resolver: zodResolver(signupSchema),
-    defaultValues: {
-      name: "",
-      email: "",
-      password: "",
-      companyName: "",
-    },
-  })
-
-  type FormFields = "name" | "email" | "password" | "companyName" | "root"
-
-  const onSubmit = async (data: z.infer<typeof signupSchema>) => {
-    const formErrors = await signup(client, data)
-    if (formErrors.length > 0) {
-      formErrors.forEach((error: FormError) => {
-        form.setError(error.field as FormFields, { type: 'custom', message: error.message })
-      })
-    } else {
-      navigate("/");
-    }
-  };
-
-  return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-100">
-      <div className="w-full max-w-md p-8 space-y-6 bg-white rounded-lg shadow-md">
-        <h2 className="text-2xl font-bold text-center">Sign Up</h2>
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-            <AnimatedErrorMessage message={form.formState.errors.root?.message} />
-            <FormField
-              control={form.control}
-              name="name"
-              render={({ field }) => (
-                <div className="space-y-2">
-                  <FormLabel htmlFor="name">Name</FormLabel>
-                  <Input id="name" placeholder="John Doe" {...field} />
-                  <AnimatedErrorMessage message={form.formState.errors.name?.message} />
-                </div>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="email"
-              render={({ field }) => (
-                <div className="space-y-2">
-                  <FormLabel htmlFor="email">Email</FormLabel>
-                  <Input id="email" type="email" placeholder="john@example.com" {...field} />
-                  <AnimatedErrorMessage message={form.formState.errors.email?.message} />
-                </div>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="password"
-              render={({ field }) => (
-                <div className="space-y-2">
-                  <FormLabel htmlFor="password">Password</FormLabel>
-                  <Input id="password" type="password" placeholder="********" {...field} />
-                  <AnimatedErrorMessage message={form.formState.errors.password?.message} />
-                </div>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="companyName"
-              render={({ field }) => (
-                <div className="space-y-2">
-                  <FormLabel htmlFor="companyName">Company Name</FormLabel>
-                  <Input id="companyName" placeholder="Acme Inc." {...field} />
-                  <AnimatedErrorMessage message={form.formState.errors.companyName?.message} />
-                </div>
-              )}
-            />
-            <PulsingButton type="submit" className="w-full" isSubmitting={isSubmittingForm}>
-              {isSubmittingForm ? "Signing Up" : "Sign Up"}
-            </PulsingButton>
-          </form>
-        </Form>
-        <div className="flex items-center justify-center space-x-2">
-          <span className="text-sm">Already have an account?</span>
-          <Link href="/login" className="text-sm hover:underline">
-            Log in
-          </Link>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-const loginSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(8),
-});
-
-
-const LoginForm = () => {
-  const [, loginMutation] = useMutation(LOGIN_MUTATION);
-  const storeToken = useMainStore((state) => state.storeAuthToken);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [, navigate] = useLocation();
-  const form = useForm<z.infer<typeof loginSchema>>({
-    resolver: zodResolver(loginSchema),
-    defaultValues: {
-      email: "",
-      password: "",
-    },
-  })
-
-  const onSubmit = async (data: z.infer<typeof loginSchema>) => {
-    setIsSubmitting(true);
-    const result = await loginMutation(data);
-    if (result.data?.login.__typename === 'LoginSuccess') {
-      storeToken(result.data.login.token);
-      navigate("/");
-    } else if (result.data?.login.__typename === 'FormErrors') {
-      result.data.login.errors.forEach((error: { field: string; message: string }) => {
-        form.setError(error.field as "email" | "password", { message: error.message });
-      });
-    }
-    if (result.error) {
-      form.setError("root", { type: 'custom', message: "An error occurred during login" });
-    }
-    setIsSubmitting(false);
-  };
-
-  return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-100">
-      <div className="w-full max-w-md p-8 space-y-6 bg-white rounded-lg shadow-md">
-        <h2 className="text-2xl font-bold text-center">Log In</h2>
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-            <AnimatedErrorMessage message={form.formState.errors.root?.message} />
-            <FormField
-              control={form.control}
-              name="email"
-              render={({ field }) => (
-                <div className="space-y-2">
-                  <FormLabel htmlFor="email">Email</FormLabel>
-                  <Input id="email" type="email" placeholder="john@example.com" {...field} />
-                  <AnimatedErrorMessage message={form.formState.errors.email?.message} />
-                </div>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="password"
-              render={({ field }) => (
-                <div className="space-y-2">
-                  <FormLabel htmlFor="password">Password</FormLabel>
-                  <Input id="password" type="password" placeholder="********" {...field} />
-                  <AnimatedErrorMessage message={form.formState.errors.password?.message} />
-                </div>
-              )}
-            />
-            <PulsingButton type="submit" className="w-full" isSubmitting={isSubmitting}>
-              {isSubmitting ? "Logging In" : "Log In"}
-            </PulsingButton>
-          </form>
-        </Form>
-        <div className="flex items-center justify-center space-x-2">
-          <span className="text-sm">Don't have an account?</span>
-          <Link href="/signup" className="text-sm hover:underline">
-            Sign up
-          </Link>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// CREATE USERS AND FILES
-const userSchema = z.object({ userName: z.string().min(2), externalId: z.string().optional() })
-
-const SaveUserForm = () => {
-  const [, saveUser] = useMutation(SAVE_USER_MUTATION)
-  const [userId, setUserId] = useState('')
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [, navigate] = useLocation();
-  const form = useForm<z.infer<typeof userSchema>>({
-    resolver: zodResolver(userSchema),
-    defaultValues: { userName: "", externalId: "" },
-  })
-
-  const onSubmit = async (data: z.infer<typeof userSchema>) => {
-    setIsSubmitting(true);
-    const result = await saveUser(data)
-    if (result.data) {
-      setUserId(result.data.saveUser.id)
-      form.reset()
-      toast("User created successfully", {
-        description: `User ID: ${result.data.saveUser.id}`,
-        action: {
-          label: "View User",
-          onClick: () => navigate(`/users/${result.data.saveUser.id}`),
-        },
-      });
-    }
-    if (result.error) {
-      form.setError("root", { type: 'custom', message: result.error.graphQLErrors[0].message })
-    }
-    setIsSubmitting(false);
-  }
-
-  return (
-    <div className="container py-10 mx-auto">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-3xl font-bold tracking-tight">Add New User</h1>
-        <Button variant="outline" onClick={() => navigate("/")}>
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Back to Contacts
-        </Button>
-      </div>
-      <Card className="w-full max-w-3xl mx-auto">
-        <CardHeader>
-          <CardTitle>New Contact Details</CardTitle>
-          <CardDescription>Create a new contact profile to manage research and insights.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-              <AnimatedErrorMessage message={form.formState.errors.root?.message} />
-              <FormField
-                control={form.control}
-                name="userName"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel htmlFor="userName">User Name</FormLabel>
-                    <FormControl>
-                      <Input id="userName" placeholder="John Doe" {...field} />
-                    </FormControl>
-                    <AnimatedErrorMessage message={form.formState.errors.userName?.message} />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="externalId"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel htmlFor="externalId">External ID (Optional)</FormLabel>
-                    <FormControl>
-                      <Input id="externalId" placeholder="crm_id_12345" {...field} />
-                    </FormControl>
-                    <AnimatedErrorMessage message={form.formState.errors.externalId?.message} />
-                  </FormItem>
-                )}
-              />
-              <PulsingButton type="submit" className="w-full" isSubmitting={isSubmitting}>
-                {isSubmitting ? "Saving..." : <><UserPlus className="w-4 h-4 mr-2" />Save User</>}
-              </PulsingButton>
-            </form>
-          </Form>
-        </CardContent>
-        {userId && (
-          <CardFooter>
-            <div className="w-full p-4 text-green-700 bg-green-100 rounded-md">
-              User Created! User ID: {userId}
-            </div>
-          </CardFooter>
-        )}
-      </Card>
-    </div>
-  )
-}
 
 const fileSchema = z.object({
   files: z.array(z.instanceof(File)).nonempty(),
@@ -604,11 +143,13 @@ const SaveFilesForm = ({ userId }: { userId: string }) => {
   const [, updateFileMetadataStatus] = useMutation(UPDATE_FILE_METADATA_STATUS_MUTATION);
   const [, transcribeFile] = useMutation(TRANSCRIBE_FILE_MUTATION);
 
-  const jwtToken = tokenManager.get() ?? '';
+  const jwtToken = useMainStore((state) => state.authToken);
+  let storageClient: StorageClient | null = null;
   if (!jwtToken) {
     navigate("/login")
+  } else {
+    storageClient = new StorageClient(jwtToken)
   }
-  const storageClient = new StorageClient(jwtToken)
 
   const form = useForm<z.infer<typeof fileSchema>>({
     resolver: zodResolver(fileSchema),
@@ -692,6 +233,9 @@ const SaveFilesForm = ({ userId }: { userId: string }) => {
 
       if (saveFilesResult.error) {
         throw new Error(saveFilesResult.error.message);
+      }
+      if (!storageClient) {
+        throw new Error("Storage client not initialized");
       }
 
       const savedFiles = saveFilesResult.data.saveFiles;
@@ -1457,15 +1001,14 @@ const Navigation = () => {
 };
 
 const Logout = () => {
-  const storeToken = useMainStore((state) => state.storeAuthToken);
+  const setToken = useMainStore((state) => state.setAuthToken);
   const [, navigate] = useLocation();
   const [showConfirmation, setShowConfirmation] = useState(true);
 
   const handleLogout = useCallback(() => {
-    storeToken("");
-    tokenManager.remove();
+    setToken("");
     navigate("/");
-  }, [storeToken, navigate]);
+  }, [setToken, navigate]);
 
   useEffect(() => {
     if (!showConfirmation) {
@@ -1539,7 +1082,7 @@ const AppRouter = ({ token }: { token: string }) => {
       </Route>
       <Route path="/new-user">
         <ProtectedRoute>
-          <SaveUserForm />
+          <NewUserForm />
         </ProtectedRoute>
       </Route>
       <Route path="/utterances">
@@ -1576,7 +1119,7 @@ function App() {
       <div className="flex h-screen">
         {token ? <Navigation /> : null}
         <div className="flex-1 p-4 overflow-auto bg-gray-50">
-          <AppRouter token={token} />
+          <AppRouter token={token || ""} />
         </div>
         <Toaster />
       </div>
