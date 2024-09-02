@@ -76,4 +76,4 @@ RUN pip3 install --no-cache-dir --upgrade pip && \
 EXPOSE 8000
 
 # Command to run the FastAPI application
-CMD ["dotenvx", "run", "-f", ".env.production", "--", "fastapi", "run", "--host", "0.0.0.0", "--workers", "3", "product_horse/run_modal.py"]
+CMD ["dotenvx", "run", "-f", ".env.production", "--", "fastapi", "run", "--host", "0.0.0.0", "--port", "8000", "--workers", "3", "product_horse/run_modal.py"]

@@ -13,7 +13,7 @@ import { toast } from "sonner"
 import { Form, FormField, FormItem, FormLabel, FormControl } from "@/components/ui/form"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card"
-import { useMutation, useQuery } from 'urql';
+import { useMutation, useQuery, useClient, Client } from 'urql';
 import { useEffect, useCallback, useState, useRef } from "react";
 import { z } from "zod"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -212,23 +212,50 @@ const signupSchema = z.object({
   companyName: z.string().min(1),
 });
 
-interface AuthStore {
-  token: string;
-  storeToken: (token: string) => void;
+type SignupFormData = z.infer<typeof signupSchema>;
+type FormError = { field: string; type: string; message: string }
+
+
+interface MainStore {
+  authToken: string;
+  isSubmittingForm: boolean;
+  storeAuthToken: (token: string) => void;
+  signup: (client: Client, data: SignupFormData) => Promise<FormError[]>;
 }
-const useStore = create<AuthStore>((set) => ({
-  token: tokenManager.get() ?? '',
-  storeToken: (token: string) => {
+
+const useMainStore = create<MainStore>((set, get) => ({
+  authToken: tokenManager.get() ?? '',
+  isSubmittingForm: false,
+  storeAuthToken: (token: string) => {
     tokenManager.set(token);
-    set({ token });
+    set({ authToken: token });
+  },
+  signup: async (client: Client, data: SignupFormData) => {
+    set({ isSubmittingForm: true });
+    let formErrors: FormError[] = []
+    const result = await client.mutation(REGISTER_MUTATION, data).toPromise();
+    set({ isSubmittingForm: false });
+    if (result.data) {
+      get().storeAuthToken(result.data.registerCompanyAndEmployee.token)
+      return formErrors
+    } 
+    if (result.error) {
+      try {
+        formErrors = result.error.graphQLErrors.map((error) => ({ field: error.path?.[0].toString() || 'root', type: 'custom', message: error.message }));
+        return formErrors
+      } catch {
+        formErrors = [{ field: 'root', type: 'custom', message: "An error occurred" }]
+        return formErrors
+      }
+    }
+    return formErrors
   },
 }));
 
 const SignUpForm = () => {
-  const [, registerMutation] = useMutation(REGISTER_MUTATION);
-  const storeToken = useStore((state) => state.storeToken);
+  const client = useClient();
+  const { signup, isSubmittingForm } = useMainStore();
   const [, navigate] = useLocation();
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const form = useForm<z.infer<typeof signupSchema>>({
     resolver: zodResolver(signupSchema),
     defaultValues: {
@@ -239,21 +266,17 @@ const SignUpForm = () => {
     },
   })
 
+  type FormFields = "name" | "email" | "password" | "companyName" | "root"
+
   const onSubmit = async (data: z.infer<typeof signupSchema>) => {
-    setIsSubmitting(true);
-    const result = await registerMutation(data);
-    if (result.data) {
-      storeToken(result.data.registerCompanyAndEmployee.token);
+    const formErrors = await signup(client, data)
+    if (formErrors.length > 0) {
+      formErrors.forEach((error: FormError) => {
+        form.setError(error.field as FormFields, { type: 'custom', message: error.message })
+      })
+    } else {
       navigate("/");
     }
-    if (result.error) {
-      try {
-        form.setError("root", { type: 'custom', message: result.error.graphQLErrors[0].message });
-      } catch {
-        form.setError("root", { type: 'custom', message: "An error occurred" });
-      }
-    }
-    setIsSubmitting(false);
   };
 
   return (
@@ -307,8 +330,8 @@ const SignUpForm = () => {
                 </div>
               )}
             />
-            <PulsingButton type="submit" className="w-full" isSubmitting={isSubmitting}>
-              {isSubmitting ? "Signing Up" : "Sign Up"}
+            <PulsingButton type="submit" className="w-full" isSubmitting={isSubmittingForm}>
+              {isSubmittingForm ? "Signing Up" : "Sign Up"}
             </PulsingButton>
           </form>
         </Form>
@@ -328,10 +351,10 @@ const loginSchema = z.object({
   password: z.string().min(8),
 });
 
-// Add this new component after the SignUpForm component
+
 const LoginForm = () => {
   const [, loginMutation] = useMutation(LOGIN_MUTATION);
-  const storeToken = useStore((state) => state.storeToken);
+  const storeToken = useMainStore((state) => state.storeAuthToken);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [, navigate] = useLocation();
   const form = useForm<z.infer<typeof loginSchema>>({
@@ -1434,7 +1457,7 @@ const Navigation = () => {
 };
 
 const Logout = () => {
-  const storeToken = useStore((state) => state.storeToken);
+  const storeToken = useMainStore((state) => state.storeAuthToken);
   const [, navigate] = useLocation();
   const [showConfirmation, setShowConfirmation] = useState(true);
 
@@ -1546,7 +1569,7 @@ const AppRouter = ({ token }: { token: string }) => {
 
 // Update the App component
 function App() {
-  const token = useStore((state) => state.token);
+  const token = useMainStore((state) => state.authToken);
 
   return (
     <Router>

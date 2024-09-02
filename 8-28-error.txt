@@ -1,4 +1,7 @@
 ords kept 30
+
+I think I fixed this
+
 (psycopg2.errors.UndefinedObject) unrecognized configuration parameter "app.current_permission_level"
 
 [SQL: SELECT current_setting('app.current_permission_level')::permissionlevel]
