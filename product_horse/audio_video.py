@@ -327,13 +327,14 @@ def write_video(
             fps=video_clip.fps,  # type: ignore
             audio_codec="aac",
             # preset="p1", #1-7
-            preset="ultrafast",
+            preset="medium",
             codec="h264_nvenc",
             threads=os.cpu_count(),
             ffmpeg_params=[
                 '-hwaccel', 'cuda',
                 '-hwaccel_output_format', 'cuda',
                 '-c:v', 'h264_nvenc',
+                '-pix_fmt', 'yuv420p',
                 '-movflags', 'faststart'
             ]
         )

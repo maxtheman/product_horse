@@ -1,0 +1,132 @@
+==> Verifying app config
+Validating /Users/max/Documents/product_horse/fly.toml
+[32m✓[0m Configuration is valid
+--> Verified app config
+==> Building image
+Waiting for remote builder fly-builder-morning-firefly-2016...
+
+Remote builder fly-builder-morning-firefly-2016 ready
+Waiting for remote builder fly-builder-morning-firefly-2016...
+
+Remote builder fly-builder-morning-firefly-2016 ready
+==> Building image with Docker
+--> docker host: 24.0.7 linux x86_64
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 698B 0.1s done
+#1 DONE 0.1s
+
+#2 [internal] load .dockerignore
+#2 transferring context: 13.56kB 0.1s done
+#2 DONE 0.1s
+
+#3 [internal] load metadata for docker.io/library/python:3.10.12-slim
+#3 DONE 0.2s
+
+#4 [1/8] FROM docker.io/library/python:3.10.12-slim@sha256:4d440b214e447deddc0a94de23a3d97d28dfafdf125a8b4bb8073381510c9ee2
+#4 DONE 0.0s
+
+#5 [2/8] WORKDIR /app
+#5 CACHED
+
+#6 [internal] load build context
+#6 transferring context: 271.07kB 0.2s done
+#6 DONE 0.2s
+
+#7 [5/8] COPY product_horse ./product_horse
+#7 CACHED
+
+#8 [6/8] COPY storage_client ./storage_client
+#8 CACHED
+
+#9 [7/8] COPY .env.production .
+#9 CACHED
+
+#10 [3/8] RUN apt-get update && apt-get install -y     curl     build-essential     libpq-dev     libcairo2-dev     && curl -sfS https://dotenvx.sh/install.sh | sh     && apt-get clean     && rm -rf /var/lib/apt/lists/*
+#10 CACHED
+
+#11 [4/8] COPY requirements-no-media.txt ./
+#11 CACHED
+
+#12 [8/8] RUN PYTHONDONTWRITEBYTECODE=1 pip install -r requirements-no-media.txt
+#12 CACHED
+
+#13 exporting to image
+#13 exporting layers done
+#13 writing image sha256:d06c9ca52583f930f6c9418cc3fe31526a5a7e7d778766142abd26ea4ed7ab46 done
+#13 naming to registry.fly.io/product-horse:deployment-01J6WRYTWTHVXER0JASNV4AV0S done
+#13 DONE 0.0s
+[38;5;252m--> Building image done[0m
+==> Pushing image to fly
+The push refers to repository [registry.fly.io/product-horse]
+62c3b3131d80: Preparing
+6e420e35e4a6: Preparing
+c856b92edf01: Preparing
+e72752bd5a2a: Preparing
+29fe1f09ffb2: Preparing
+7a2cc11aaf36: Preparing
+ddaefa4abd33: Preparing
+54512d0df01f: Preparing
+43574d3b4af9: Preparing
+1b9e3cebd93c: Preparing
+5b60283f3630: Preparing
+511780f88f80: Preparing
+7a2cc11aaf36: Waiting
+54512d0df01f: Waiting
+43574d3b4af9: Waiting
+1b9e3cebd93c: Waiting
+5b60283f3630: Waiting
+511780f88f80: Waiting
+ddaefa4abd33: Waiting
+6e420e35e4a6: Layer already exists
+c856b92edf01: Layer already exists
+62c3b3131d80: Layer already exists
+e72752bd5a2a: Layer already exists
+29fe1f09ffb2: Layer already exists
+43574d3b4af9: Layer already exists
+7a2cc11aaf36: Layer already exists
+54512d0df01f: Layer already exists
+1b9e3cebd93c: Layer already exists
+ddaefa4abd33: Layer already exists
+5b60283f3630: Layer already exists
+511780f88f80: Layer already exists
+deployment-01J6WRYTWTHVXER0JASNV4AV0S: digest: sha256:13f1fa49311ceac628072a817f89935ca50d6d98118bbad7b4e6670daa2bbc0c size: 2836
+--> Pushing image done
+image: registry.fly.io/product-horse:deployment-01J6WRYTWTHVXER0JASNV4AV0S
+image size: 1.1 GB
+
+Watch your deployment at https://fly.io/apps/product-horse/monitoring
+
+Updating existing machines in 'product-horse' with rolling strategy
+> [1/2] Acquiring lease for 32871494a97918
+> [1/2] Acquired lease for 32871494a97918
+> [2/2] Acquiring lease for e2867512c19568
+> [2/2] Acquired lease for e2867512c19568
+> [2/2] Updating machine config for e2867512c19568
+> [1/2] Updating machine config for 32871494a97918
+> [2/2] Updating e2867512c19568 [app]
+> [1/2] Updating 32871494a97918 [app]
+> [2/2] Updated machine config for e2867512c19568
+> [2/2] Waiting for machine e2867512c19568 to reach a good state
+> [1/2] Updated machine config for 32871494a97918
+✔ [1/2] Machine 32871494a97918 is now in a good state
+> [2/2] Machine e2867512c19568 reached started state
+
+WARNING The app is not listening on the expected address and will not be reachable by fly-proxy.
+You can fix this by configuring your app to listen on the following addresses:
+  - 0.0.0.0:8000
+Found these processes inside the machine with open listening sockets:
+  PROCESS        | ADDRESSES                             
+-----------------*---------------------------------------
+  /.fly/hallpass | [fdaa:9:dbad:a7b:2af:40bc:7b34:2]:22  
+
+> [2/2] Running smoke checks on machine e2867512c19568
+> [2/2] Running machine checks on machine e2867512c19568
+> [2/2] Checking health of machine e2867512c19568
+✔ [2/2] Machine e2867512c19568 is now in a good state
+> [2/2] Clearing lease for e2867512c19568
+> [1/2] Clearing lease for 32871494a97918
+✔ [2/2] Cleared lease for e2867512c19568
+✔ [1/2] Cleared lease for 32871494a97918
+Checking DNS configuration for product-horse.fly.dev
+
+Visit your newly deployed app at https://product-horse.fly.dev/

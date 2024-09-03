@@ -266,6 +266,8 @@ product_horse/**/.DS_Store
 # pyenv
 storage_client/**/.python-version
 
+deploy_logs/
+
 # Environments
 storage_client/**/.env
 storage_client/**/.venv

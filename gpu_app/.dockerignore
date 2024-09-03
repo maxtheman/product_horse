@@ -284,3 +284,5 @@ storage_client/.coverage
 # Automatically created by ruff.
 storage_client/.ruff_cache/**/*
 fly.toml
+
+deploy_logs/

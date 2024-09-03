@@ -1,4 +1,4 @@
-import {GET_UTTERANCES_QUERY, GET_TRANSCRIPT_QUERY, CREATE_VIDEO_MUTATION, GET_ALL_VIDEOS_QUERY, GET_VIDEO_QUERY, SAVE_FILES_MUTATION, TRANSCRIBE_FILE_MUTATION, UPDATE_FILE_METADATA_STATUS_MUTATION } from "./graphql";
+import { GET_UTTERANCES_QUERY, GET_TRANSCRIPT_QUERY, CREATE_VIDEO_MUTATION, GET_ALL_VIDEOS_QUERY, GET_VIDEO_QUERY, SAVE_FILES_MUTATION, TRANSCRIBE_FILE_MUTATION, UPDATE_FILE_METADATA_STATUS_MUTATION } from "./graphql";
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -57,6 +57,8 @@ import SignUpForm from "@/components/auth/SignupForm";
 import NewUserForm from "@/components/users/NewUser";
 import Logout from "@/components/auth/Logout";
 import UserList from "@/components/users/UserList";
+import VideoJS from "@/components/VideoJS";
+import type Player from 'video.js/dist/types/player';
 
 // TODOS:
 // - Add a progress bar to the uploader and move the upload logic to zustand state
@@ -664,63 +666,25 @@ const VideoPlayer = ({ id }: { id: string }) => {
     variables: { videoId: id }
   });
   const [error, setError] = useState<string | null>(null);
-  const [useNativePlayer, setUseNativePlayer] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [player, setPlayer] = useState<Player | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [volume, setVolume] = useState(1);
-  const [isMuted, setIsMuted] = useState(false);
-  const videoRef = useRef<HTMLVideoElement>(null);
   const [, navigate] = useLocation();
 
-  useEffect(() => {
-    setError(null);
-    setUseNativePlayer(false);
-  }, [result]);
+  const handlePlayerReady = (player: Player) => {
+    setPlayer(player);
 
-  const handlePlayPause = () => {
-    if (videoRef.current) {
-      if (isPlaying) {
-        videoRef.current.pause();
-      } else {
-        videoRef.current.play();
-      }
-      setIsPlaying(!isPlaying);
-    }
-  };
+    player.on('timeupdate', () => {
+      setCurrentTime(player.currentTime());
+    });
 
-  const handleTimeUpdate = () => {
-    if (videoRef.current) {
-      setCurrentTime(videoRef.current.currentTime);
-    }
-  };
+    player.on('loadedmetadata', () => {
+      setDuration(player.duration());
+    });
 
-  const handleSeek = (value: number[]) => {
-    if (videoRef.current) {
-      videoRef.current.currentTime = value[0];
-      setCurrentTime(value[0]);
-    }
-  };
-
-  const handleVolumeChange = (value: number[]) => {
-    const newVolume = value[0];
-    setVolume(newVolume);
-    if (videoRef.current) {
-      videoRef.current.volume = newVolume;
-    }
-    setIsMuted(newVolume === 0);
-  };
-
-  const toggleMute = () => {
-    if (videoRef.current) {
-      videoRef.current.muted = !isMuted;
-      setIsMuted(!isMuted);
-      if (isMuted) {
-        setVolume(videoRef.current.volume);
-      } else {
-        setVolume(0);
-      }
-    }
+    player.on('error', () => {
+      setError(`Failed to load the video: ${player.error()?.message || 'Unknown error'}`);
+    });
   };
 
   const formatTime = (time: number) => {
@@ -729,10 +693,13 @@ const VideoPlayer = ({ id }: { id: string }) => {
     return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
   };
 
-  const handleError = (e: React.SyntheticEvent<HTMLVideoElement, Event>) => {
-    console.error('Video playback error:', e);
-    setError(`Failed to load the video: ${(e.target as HTMLVideoElement).error?.message || 'Unknown error'}`);
-  };
+  useEffect(() => {
+    return () => {
+      if (player && !player.isDisposed()) {
+        player.dispose();
+      }
+    };
+  }, [player]);
 
   if (result.fetching) return (
     <div className="space-y-4">
@@ -744,6 +711,17 @@ const VideoPlayer = ({ id }: { id: string }) => {
   if (result.error) return <AnimatedErrorMessage message={result.error.message} />;
 
   const { title, signedUrl, renderStatus } = result.data.getVideo;
+
+  const videoJsOptions = {
+    autoplay: false,
+    controls: true,
+    responsive: true,
+    fluid: true,
+    sources: [{
+      src: signedUrl,
+      type: 'video/mp4'
+    }]
+  };
 
   return (
     <div className="container py-10 mx-auto">
@@ -762,20 +740,10 @@ const VideoPlayer = ({ id }: { id: string }) => {
         <CardContent>
           {renderStatus === 'complete' && signedUrl && (
             <div className="space-y-4">
-              <div className="relative aspect-video">
-                <video
-                  ref={videoRef}
-                  src={signedUrl}
-                  className="w-full h-full"
-                  onTimeUpdate={handleTimeUpdate}
-                  onLoadedMetadata={() => setDuration(videoRef.current?.duration || 0)}
-                  onError={handleError}
-                  crossOrigin="anonymous"
-                />
-              </div>
+              <VideoJS options={videoJsOptions} onReady={handlePlayerReady} />
               <div className="flex items-center space-x-2">
-                <Button size="icon" variant="ghost" onClick={handlePlayPause}>
-                  {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                <Button size="icon" variant="ghost" onClick={() => player?.paused() ? player.play() : player.pause()}>
+                  {player?.paused() ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}
                 </Button>
                 <span className="text-sm">{formatTime(currentTime)}</span>
                 <Slider
@@ -783,19 +751,19 @@ const VideoPlayer = ({ id }: { id: string }) => {
                   max={duration}
                   step={1}
                   value={[currentTime]}
-                  onValueChange={handleSeek}
+                  onValueChange={(value) => player?.currentTime(value[0])}
                   className="w-full"
                 />
                 <span className="text-sm">{formatTime(duration)}</span>
-                <Button size="icon" variant="ghost" onClick={toggleMute}>
-                  {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+                <Button size="icon" variant="ghost" onClick={() => player?.muted(!player.muted())}>
+                  {player?.muted() ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
                 </Button>
                 <Slider
                   min={0}
                   max={1}
                   step={0.1}
-                  value={[volume]}
-                  onValueChange={handleVolumeChange}
+                  value={[player?.volume() || 0]}
+                  onValueChange={(value) => player?.volume(value[0])}
                   className="w-24"
                 />
               </div>
@@ -803,14 +771,6 @@ const VideoPlayer = ({ id }: { id: string }) => {
           )}
           {error && <AnimatedErrorMessage message={error} />}
         </CardContent>
-        {error && (
-          <CardFooter>
-            <Button onClick={() => setUseNativePlayer(!useNativePlayer)}>
-              <RotateCcw className="w-4 h-4 mr-2" />
-              Try {useNativePlayer ? 'Custom' : 'Native'} Player
-            </Button>
-          </CardFooter>
-        )}
       </Card>
     </div>
   );

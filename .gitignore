@@ -13,6 +13,8 @@ wheels/
 temp-videos/
 .DS_Store
 
+deploy_logs/
+
 .hypothesis/
 
 chroma_db/chroma.sqlite3

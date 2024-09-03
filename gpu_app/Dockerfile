@@ -134,6 +134,7 @@ RUN ffmpeg -encoders | grep -q h264_nvenc || (echo "h264_nvenc codec not found" 
 # ffmpeg -hwaccel cuda -hwaccel_output_format cuda -f lavfi -i testsrc=duration=5:size=1920x1080:rate=30 -c:v h264_nvenc -preset fast -b:v 5M -f null -
 
 # Copy the dist files into the image
+# /Users/max/Documents/product_horse/gpu_app/product_horse-0.1.0-py3-none-any.whl
 COPY gpu_app/product_horse-0.1.0-py3-none-any.whl ./
 COPY gpu_app/product_horse-0.1.0.tar.gz ./
 COPY ../storage_client /app/storage_client

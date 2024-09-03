@@ -1,0 +1,275 @@
+==> Verifying app config
+Validating gpu_app/fly.toml
+[32m✓[0m Configuration is valid
+--> Verified app config
+==> Building image
+[33mWARN[0m Ignoring /Users/max/Documents/product_horse/Dockerfile, and using /Users/max/Documents/product_horse/gpu_app/Dockerfile (from fly.toml).
+
+Waiting for remote builder fly-builder-morning-firefly-2016...
+
+Remote builder fly-builder-morning-firefly-2016 ready
+Waiting for remote builder fly-builder-morning-firefly-2016...
+
+Remote builder fly-builder-morning-firefly-2016 ready
+==> Building image with Docker
+--> docker host: 24.0.7 linux x86_64
+#1 [internal] load .dockerignore
+#1 transferring context: 13.56kB 0.0s done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 6.45kB 0.0s done
+#2 DONE 0.0s
+
+#3 [internal] load metadata for docker.io/nvidia/cuda:12.3.0-devel-ubuntu22.04
+#3 DONE 0.5s
+
+#4 [internal] load metadata for docker.io/library/python:3.10.12-slim
+#4 DONE 0.5s
+
+#5 [1/8] FROM docker.io/library/python:3.10.12-slim@sha256:4d440b214e447deddc0a94de23a3d97d28dfafdf125a8b4bb8073381510c9ee2
+#5 DONE 0.0s
+
+#6 [ffmpeg-builder 1/3] FROM docker.io/nvidia/cuda:12.3.0-devel-ubuntu22.04@sha256:10aee9352d37507f233317d19feb6f39ad3d909189fe56c8b3d56ec27ab12204
+#6 CACHED
+
+#7 [2/8] WORKDIR /app
+#7 CACHED
+
+#8 [internal] load build context
+#8 transferring context: 3.47kB 0.0s done
+#8 DONE 0.0s
+
+#9 [stage-1 27/34] RUN ffmpeg -encoders | grep -q h264_nvenc || (echo "h264_nvenc codec not found" && exit 1)
+#9 CACHED
+
+#10 [stage-1  4/34] COPY --from=ffmpeg-builder /usr/local/bin/ /usr/local/bin/
+#10 CACHED
+
+#11 [stage-1 24/34] RUN [ ! -e /usr/lib/x86_64-linux-gnu/libnvcuvid.so ] && ln -s /usr/lib/x86_64-linux-gnu/libnvcuvid.so.1 /usr/lib/x86_64-linux-gnu/libnvcuvid.so || echo "Symlink for libnvcuvid.so already exists"
+#11 CACHED
+
+#12 [stage-1  9/34] COPY --from=ffmpeg-builder /usr/local/lib/libpostproc.so.* /usr/local/lib/
+#12 CACHED
+
+#13 [stage-1 18/34] COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libx265.so.* /usr/lib/x86_64-linux-gnu/
+#13 CACHED
+
+#14 [stage-1 12/34] COPY --from=ffmpeg-builder /usr/local/lib/libavutil.so.* /usr/local/lib/
+#14 CACHED
+
+#15 [stage-1  8/34] COPY --from=ffmpeg-builder /usr/local/lib/libavcodec.so.* /usr/local/lib/
+#15 CACHED
+
+#16 [stage-1 26/34] RUN ldconfig
+#16 CACHED
+
+#17 [stage-1 15/34] COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libmp3lame.so.* /usr/lib/x86_64-linux-gnu/
+#17 CACHED
+
+#18 [stage-1  7/34] COPY --from=ffmpeg-builder /usr/local/lib/libavformat.so.* /usr/local/lib/
+#18 CACHED
+
+#19 [stage-1 14/34] COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libfdk-aac.so.* /usr/lib/x86_64-linux-gnu/
+#19 CACHED
+
+#20 [stage-1  5/34] COPY --from=ffmpeg-builder /usr/local/lib/libavdevice.so.* /usr/local/lib/
+#20 CACHED
+
+#21 [stage-1 13/34] COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libvpx.so.* /usr/lib/x86_64-linux-gnu/
+#21 CACHED
+
+#22 [ffmpeg-builder 3/3] RUN git clone https://github.com/FFmpeg/nv-codec-headers.git &&     cd nv-codec-headers &&     git checkout n12.1.14.0 &&     make install &&     cd .. &&     git clone --depth 1 https://git.ffmpeg.org/ffmpeg.git ffmpeg &&     cd ffmpeg &&     ./configure     --enable-nonfree     --enable-cuda-nvcc     --enable-libnpp     --extra-cflags=-I/usr/local/cuda/include     --extra-ldflags=-L/usr/local/cuda/lib64     --enable-gpl     --enable-libx264     --enable-libx265     --enable-libvpx     --enable-cuvid     --enable-libfdk-aac     --enable-libmp3lame     --enable-libopus     --enable-nvenc     --enable-shared     --disable-static     && make -j8     && make install
+#22 CACHED
+
+#23 [stage-1 11/34] COPY --from=ffmpeg-builder /usr/local/lib/libswscale.so.* /usr/local/lib/
+#23 CACHED
+
+#24 [stage-1 10/34] COPY --from=ffmpeg-builder /usr/local/lib/libswresample.so.* /usr/local/lib/
+#24 CACHED
+
+#25 [stage-1 21/34] COPY --from=ffmpeg-builder /usr/local/cuda/lib64/libnppidei.so.* /usr/local/cuda/lib64/
+#25 CACHED
+
+#26 [stage-1 19/34] COPY --from=ffmpeg-builder /usr/local/cuda/lib64/libnppig.so.* /usr/local/cuda/lib64/
+#26 CACHED
+
+#27 [stage-1 23/34] COPY --from=ffmpeg-builder /usr/local/cuda/lib64/libnppc.so.* /usr/local/cuda/lib64/
+#27 CACHED
+
+#28 [stage-1 16/34] COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libopus.so.* /usr/lib/x86_64-linux-gnu/
+#28 CACHED
+
+#29 [stage-1 22/34] COPY --from=ffmpeg-builder /usr/local/cuda/lib64/libnppif.so.* /usr/local/cuda/lib64/
+#29 CACHED
+
+#30 [stage-1 25/34] RUN [ ! -e /usr/lib/x86_64-linux-gnu/libnvidia-encode.so ] && ln -s /usr/lib/x86_64-linux-gnu/libnvidia-encode.so.1 /usr/lib/x86_64-linux-gnu/libnvidia-encode.so || echo "Symlink for libnvidia-encode.so already exists"
+#30 CACHED
+
+#31 [stage-1 17/34] COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libx264.so.* /usr/lib/x86_64-linux-gnu/
+#31 CACHED
+
+#32 [stage-1 20/34] COPY --from=ffmpeg-builder /usr/local/cuda/lib64/libnppicc.so.* /usr/local/cuda/lib64/
+#32 CACHED
+
+#33 [stage-1  6/34] COPY --from=ffmpeg-builder /usr/local/lib/libavfilter.so.* /usr/local/lib/
+#33 CACHED
+
+#34 [stage-1 28/34] COPY gpu_app/product_horse-0.1.0-py3-none-any.whl ./
+#34 ERROR: failed to calculate checksum of ref 71fc8790-da23-4d66-87b3-76bc648ec944::9qa87ezzz1n2nmoxtmkrio3t1: "/gpu_app/dist/product_horse-0.1.0-py3-none-any.whl": not found
+
+#35 [stage-1 29/34] COPY gpu_app/product_horse-0.1.0.tar.gz ./
+#35 ERROR: failed to calculate checksum of ref 71fc8790-da23-4d66-87b3-76bc648ec944::9qa87ezzz1n2nmoxtmkrio3t1: "/gpu_app/dist/product_horse-0.1.0.tar.gz": not found
+
+#36 [ffmpeg-builder 2/3] RUN apt-get update && apt-get install -y     git     yasm     build-essential     cmake     libtool     libc6     libc6-dev     unzip     wget     libnuma1     libnuma-dev     libx264-dev     libx265-dev     libvpx-dev     libfdk-aac-dev     libmp3lame-dev     libopus-dev     && rm -rf /var/lib/apt/lists/*
+#36 CANCELED
+
+#37 [stage-1  3/34] RUN apt-get update && apt-get install -y     curl     libpq-dev     libcairo2-dev     imagemagick     pkg-config     gcc     build-essential     ca-certificates     wget     python3     python3-pip     && curl -sfS https://dotenvx.sh/install.sh | sh     && sed -i 's/rights="none" pattern="@\*"/rights="read|write" pattern="@*"/' /etc/ImageMagick-6/policy.xml     && apt-get clean     && wget -qO /cuda-keyring.deb https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb     && dpkg -i /cuda-keyring.deb     && apt-get update     && apt-get install -y --no-install-recommends     nvidia-driver-545     && rm -rf /var/lib/apt/lists/*     && rm -rf /cuda-keyring.deb
+#37 CANCELED
+------
+ > [stage-1 28/34] COPY gpu_app/product_horse-0.1.0-py3-none-any.whl ./:
+------
+------
+ > [stage-1 29/34] COPY gpu_app/product_horse-0.1.0.tar.gz ./:
+------
+==> Building image
+[33mWARN[0m Ignoring /Users/max/Documents/product_horse/Dockerfile, and using /Users/max/Documents/product_horse/gpu_app/Dockerfile (from fly.toml).
+
+👀 checking remote builder compatibility with wireguardless deploys ...
+✓ compatible remote builder found
+Waiting for remote builder fly-builder-morning-firefly-2016...
+
+[2mINFO[0m Override builder host with: https://fly-builder-morning-firefly-2016.fly.dev (was tcp://[fdaa:9:dbad:a7b:2b0:1e4d:d946:2]:2375)
+
+Remote builder fly-builder-morning-firefly-2016 ready
+Waiting for remote builder fly-builder-morning-firefly-2016...
+
+[2mINFO[0m Override builder host with: https://fly-builder-morning-firefly-2016.fly.dev (was tcp://[fdaa:9:dbad:a7b:2b0:1e4d:d946:2]:2375)
+
+Remote builder fly-builder-morning-firefly-2016 ready
+==> Building image with Docker
+--> docker host: 24.0.7 linux x86_64
+#1 [internal] load .dockerignore
+#1 transferring context: 13.56kB 0.0s done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 6.45kB 0.0s done
+#2 DONE 0.0s
+
+#3 [internal] load metadata for docker.io/nvidia/cuda:12.3.0-devel-ubuntu22.04
+#3 ...
+
+#4 [internal] load metadata for docker.io/library/python:3.10.12-slim
+#4 DONE 0.2s
+
+#3 [internal] load metadata for docker.io/nvidia/cuda:12.3.0-devel-ubuntu22.04
+#3 DONE 0.2s
+
+#5 [stage-1  1/34] FROM docker.io/library/python:3.10.12-slim@sha256:4d440b214e447deddc0a94de23a3d97d28dfafdf125a8b4bb8073381510c9ee2
+#5 DONE 0.0s
+
+#6 [stage-1  2/34] WORKDIR /app
+#6 CACHED
+
+#7 [ffmpeg-builder 1/3] FROM docker.io/nvidia/cuda:12.3.0-devel-ubuntu22.04@sha256:10aee9352d37507f233317d19feb6f39ad3d909189fe56c8b3d56ec27ab12204
+#7 CACHED
+
+#8 [internal] load build context
+#8 transferring context: 3.47kB 0.0s done
+#8 DONE 0.0s
+
+#9 [stage-1  9/34] COPY --from=ffmpeg-builder /usr/local/lib/libpostproc.so.* /usr/local/lib/
+#9 CACHED
+
+#10 [stage-1  6/34] COPY --from=ffmpeg-builder /usr/local/lib/libavfilter.so.* /usr/local/lib/
+#10 CACHED
+
+#11 [stage-1 20/34] COPY --from=ffmpeg-builder /usr/local/cuda/lib64/libnppicc.so.* /usr/local/cuda/lib64/
+#11 CACHED
+
+#12 [stage-1 22/34] COPY --from=ffmpeg-builder /usr/local/cuda/lib64/libnppif.so.* /usr/local/cuda/lib64/
+#12 CACHED
+
+#13 [stage-1 24/34] RUN [ ! -e /usr/lib/x86_64-linux-gnu/libnvcuvid.so ] && ln -s /usr/lib/x86_64-linux-gnu/libnvcuvid.so.1 /usr/lib/x86_64-linux-gnu/libnvcuvid.so || echo "Symlink for libnvcuvid.so already exists"
+#13 CACHED
+
+#14 [stage-1 26/34] RUN ldconfig
+#14 CACHED
+
+#15 [stage-1 16/34] COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libopus.so.* /usr/lib/x86_64-linux-gnu/
+#15 CACHED
+
+#16 [stage-1 12/34] COPY --from=ffmpeg-builder /usr/local/lib/libavutil.so.* /usr/local/lib/
+#16 CACHED
+
+#17 [stage-1 19/34] COPY --from=ffmpeg-builder /usr/local/cuda/lib64/libnppig.so.* /usr/local/cuda/lib64/
+#17 CACHED
+
+#18 [stage-1 21/34] COPY --from=ffmpeg-builder /usr/local/cuda/lib64/libnppidei.so.* /usr/local/cuda/lib64/
+#18 CACHED
+
+#19 [stage-1 18/34] COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libx265.so.* /usr/lib/x86_64-linux-gnu/
+#19 CACHED
+
+#20 [stage-1 23/34] COPY --from=ffmpeg-builder /usr/local/cuda/lib64/libnppc.so.* /usr/local/cuda/lib64/
+#20 CACHED
+
+#21 [stage-1 10/34] COPY --from=ffmpeg-builder /usr/local/lib/libswresample.so.* /usr/local/lib/
+#21 CACHED
+
+#22 [stage-1  8/34] COPY --from=ffmpeg-builder /usr/local/lib/libavcodec.so.* /usr/local/lib/
+#22 CACHED
+
+#23 [stage-1 11/34] COPY --from=ffmpeg-builder /usr/local/lib/libswscale.so.* /usr/local/lib/
+#23 CACHED
+
+#24 [stage-1  7/34] COPY --from=ffmpeg-builder /usr/local/lib/libavformat.so.* /usr/local/lib/
+#24 CACHED
+
+#25 [stage-1 13/34] COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libvpx.so.* /usr/lib/x86_64-linux-gnu/
+#25 CACHED
+
+#26 [stage-1 27/34] RUN ffmpeg -encoders | grep -q h264_nvenc || (echo "h264_nvenc codec not found" && exit 1)
+#26 CACHED
+
+#27 [stage-1 17/34] COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libx264.so.* /usr/lib/x86_64-linux-gnu/
+#27 CACHED
+
+#28 [stage-1 15/34] COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libmp3lame.so.* /usr/lib/x86_64-linux-gnu/
+#28 CACHED
+
+#29 [stage-1  4/34] COPY --from=ffmpeg-builder /usr/local/bin/ /usr/local/bin/
+#29 CACHED
+
+#30 [stage-1 25/34] RUN [ ! -e /usr/lib/x86_64-linux-gnu/libnvidia-encode.so ] && ln -s /usr/lib/x86_64-linux-gnu/libnvidia-encode.so.1 /usr/lib/x86_64-linux-gnu/libnvidia-encode.so || echo "Symlink for libnvidia-encode.so already exists"
+#30 CACHED
+
+#31 [ffmpeg-builder 3/3] RUN git clone https://github.com/FFmpeg/nv-codec-headers.git &&     cd nv-codec-headers &&     git checkout n12.1.14.0 &&     make install &&     cd .. &&     git clone --depth 1 https://git.ffmpeg.org/ffmpeg.git ffmpeg &&     cd ffmpeg &&     ./configure     --enable-nonfree     --enable-cuda-nvcc     --enable-libnpp     --extra-cflags=-I/usr/local/cuda/include     --extra-ldflags=-L/usr/local/cuda/lib64     --enable-gpl     --enable-libx264     --enable-libx265     --enable-libvpx     --enable-cuvid     --enable-libfdk-aac     --enable-libmp3lame     --enable-libopus     --enable-nvenc     --enable-shared     --disable-static     && make -j8     && make install
+#31 CACHED
+
+#32 [stage-1 14/34] COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libfdk-aac.so.* /usr/lib/x86_64-linux-gnu/
+#32 CACHED
+
+#33 [stage-1  5/34] COPY --from=ffmpeg-builder /usr/local/lib/libavdevice.so.* /usr/local/lib/
+#33 CACHED
+
+#34 [stage-1 28/34] COPY gpu_app/product_horse-0.1.0-py3-none-any.whl ./
+#34 ERROR: failed to calculate checksum of ref 71fc8790-da23-4d66-87b3-76bc648ec944::r2119babh96v1clx4uerxpggt: "/gpu_app/dist/product_horse-0.1.0-py3-none-any.whl": not found
+
+#35 [stage-1 29/34] COPY gpu_app/product_horse-0.1.0.tar.gz ./
+#35 ERROR: failed to calculate checksum of ref 71fc8790-da23-4d66-87b3-76bc648ec944::r2119babh96v1clx4uerxpggt: "/gpu_app/dist/product_horse-0.1.0.tar.gz": not found
+
+#36 [ffmpeg-builder 2/3] RUN apt-get update && apt-get install -y     git     yasm     build-essential     cmake     libtool     libc6     libc6-dev     unzip     wget     libnuma1     libnuma-dev     libx264-dev     libx265-dev     libvpx-dev     libfdk-aac-dev     libmp3lame-dev     libopus-dev     && rm -rf /var/lib/apt/lists/*
+#36 CANCELED
+
+#37 [stage-1  3/34] RUN apt-get update && apt-get install -y     curl     libpq-dev     libcairo2-dev     imagemagick     pkg-config     gcc     build-essential     ca-certificates     wget     python3     python3-pip     && curl -sfS https://dotenvx.sh/install.sh | sh     && sed -i 's/rights="none" pattern="@\*"/rights="read|write" pattern="@*"/' /etc/ImageMagick-6/policy.xml     && apt-get clean     && wget -qO /cuda-keyring.deb https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb     && dpkg -i /cuda-keyring.deb     && apt-get update     && apt-get install -y --no-install-recommends     nvidia-driver-545     && rm -rf /var/lib/apt/lists/*     && rm -rf /cuda-keyring.deb
+#37 0.320 runc run failed: container process is already dead
+#37 CANCELED
+------
+ > [stage-1 28/34] COPY gpu_app/product_horse-0.1.0-py3-none-any.whl ./:
+------
+------
+ > [stage-1 29/34] COPY gpu_app/product_horse-0.1.0.tar.gz ./:
+------
+Error: failed to fetch an image or build from source: error building: failed to solve: failed to compute cache key: failed to calculate checksum of ref 71fc8790-da23-4d66-87b3-76bc648ec944::r2119babh96v1clx4uerxpggt: "/gpu_app/dist/product_horse-0.1.0.tar.gz": not found
