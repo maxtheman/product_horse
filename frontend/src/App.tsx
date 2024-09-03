@@ -12,7 +12,7 @@ import { Form, FormField, FormItem, FormLabel, FormControl } from "@/components/
 import { Checkbox } from "@/components/ui/checkbox"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card"
 import { useMutation, useQuery } from 'urql';
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { z } from "zod"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm, Controller } from "react-hook-form"
@@ -661,7 +661,7 @@ const VideoList = () => {
 };
 
 const VideoPlayer = ({ id }: { id: string }) => {
-  const [result] = useQuery({
+  const [result, reexecuteQuery] = useQuery({
     query: GET_VIDEO_QUERY,
     variables: { videoId: id }
   });
@@ -675,15 +675,17 @@ const VideoPlayer = ({ id }: { id: string }) => {
     setPlayer(player);
 
     player.on('timeupdate', () => {
-      setCurrentTime(player.currentTime());
+      setCurrentTime(player.currentTime() || 0);
     });
 
     player.on('loadedmetadata', () => {
-      setDuration(player.duration());
+      setDuration(player.duration() || 0);
     });
 
-    player.on('error', () => {
+    player.on('error', async () => {
       setError(`Failed to load the video: ${player.error()?.message || 'Unknown error'}`);
+      // Re-run the query to get a new signed URL
+      await reexecuteQuery({ requestPolicy: 'network-only' });
     });
   };
 
@@ -742,7 +744,7 @@ const VideoPlayer = ({ id }: { id: string }) => {
             <div className="space-y-4">
               <VideoJS options={videoJsOptions} onReady={handlePlayerReady} />
               <div className="flex items-center space-x-2">
-                <Button size="icon" variant="ghost" onClick={() => player?.paused() ? player.play() : player.pause()}>
+                <Button size="icon" variant="ghost" onClick={() => player?.paused() ? player?.play() : player?.pause()}>
                   {player?.paused() ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}
                 </Button>
                 <span className="text-sm">{formatTime(currentTime)}</span>
@@ -769,7 +771,19 @@ const VideoPlayer = ({ id }: { id: string }) => {
               </div>
             </div>
           )}
-          {error && <AnimatedErrorMessage message={error} />}
+          {error && (
+            <div className="mt-4 space-y-4">
+              <AnimatedErrorMessage message={error} />
+              <p className="text-sm text-gray-600">
+                Our streaming infrastructure is a little buggy. We apologize for the inconvenience. Please try playing the video again or download it using the link below.
+              </p>
+              <Button asChild>
+                <a href={signedUrl} download={`${title}.mp4`}>
+                  Download Video
+                </a>
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

@@ -1,60 +1,61 @@
 import React from 'react';
 import videojs from 'video.js';
-import type Player from 'video.js/dist/types/player';
-import type VideoJsPlayerOptions from 'video.js/dist/types/player';
 import 'video.js/dist/video-js.css';
-export const VideoJS = (props: { options: VideoJsPlayerOptions, onReady: (player: Player) => void }) => {
-    const videoRef = React.useRef<HTMLDivElement>(null);
-    const playerRef = React.useRef<Player | null>(null);
-    const { options, onReady } = props;
 
-    React.useEffect(() => {
+// Define a type for the player instance
+type PlayerInstance = ReturnType<typeof videojs>;
 
-        // Make sure Video.js player is only initialized once
-        if (!playerRef.current) {
-            // The Video.js player needs to be _inside_ the component el for React 18 Strict Mode. 
-            const videoElement = document.createElement("video-js");
+// Define a type for the player options
+type PlayerOptions = Parameters<typeof videojs>[1];
 
-            videoElement.classList.add('vjs-big-play-centered');
-            videoRef.current?.appendChild(videoElement);
+// Define props for the VideoJS component
+interface VideoJSProps {
+  options: PlayerOptions;
+  onReady: (player: PlayerInstance) => void;
+}
 
-            const player = playerRef.current = videojs(videoElement, options, () => {
-                videojs.log('player is ready');
-                if (onReady) {
-                    onReady(player);
-                }
-            });
+export const VideoJS: React.FC<VideoJSProps> = (props) => {
+  const videoRef = React.useRef<HTMLDivElement>(null);
+  const playerRef = React.useRef<PlayerInstance | null>(null);
+  const { options, onReady } = props;
 
-            // You could update an existing player in the `else` block here
-            // on prop change, for example:
-        } else {
-            const player = playerRef.current;
-            // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-            // @ts-ignore
-            player.autoplay(options.autoplay);
-            // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-            // @ts-ignore
-            player.src(options.sources);
-        }
-    }, [options, videoRef, onReady]);
+  React.useEffect(() => {
+    if (!playerRef.current) {
+      const videoElement = document.createElement("video-js");
+      videoElement.classList.add('vjs-big-play-centered');
+      videoRef.current?.appendChild(videoElement);
 
-    // Dispose the Video.js player when the functional component unmounts
-    React.useEffect(() => {
-        const player = playerRef.current;
+      const player = videojs(videoElement, options, () => {
+        videojs.log('player is ready');
+        onReady(player);
+      });
 
-        return () => {
-            if (player && !player.isDisposed()) {
-                player.dispose();
-                playerRef.current = null;
-            }
-        };
-    }, [playerRef]);
+      playerRef.current = player;
+    } else {
+      const player = playerRef.current;
+      
+      // Update player options
+      player.autoplay(options.autoplay);
+      player.src(options.sources || []);
+    }
+  }, [options, videoRef, onReady]);
 
-    return (
-        <div data-vjs-player>
-            <div ref={videoRef} />
-        </div>
-    );
+  React.useEffect(() => {
+    const player = playerRef.current;
+
+    return () => {
+      if (player && !player.isDisposed()) {
+        player.dispose();
+        playerRef.current = null;
+      }
+    };
+  }, [playerRef]);
+
+  return (
+    <div data-vjs-player>
+      <div ref={videoRef} />
+    </div>
+  );
 }
 
 export default VideoJS;
