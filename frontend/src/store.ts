@@ -84,7 +84,8 @@ const useMainStore = create<MainStore>((set, get) => ({
         set({ isSubmittingForm: true });
         const result = await client.mutation(LOGIN_MUTATION, data).toPromise();
         const formErrors = handleForm(result, (data) => {
-            get().setAuthToken(data.LoginSuccess.token)
+            const token = data.login.token || data.LoginSuccess.token
+            get().setAuthToken(token)
         })
         set({ isSubmittingForm: false });
         if (formErrors.length === 0) {
@@ -114,7 +115,7 @@ const useMainStore = create<MainStore>((set, get) => ({
         })
         set({ isSubmittingForm: false });
         return formErrors
-    }
+    },
 }));
 
 export default useMainStore;

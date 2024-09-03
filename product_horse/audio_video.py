@@ -325,23 +325,15 @@ def write_video(
             video_path,
             fps=video_clip.fps,  # type: ignore
             audio_codec="aac",
-            preset="ultrafast",
-            # codec="h264_videotoolbox",
-            codec="libx264",
+            preset="p4",  # Changed from "ultrafast" to "p4" for NVENC
+            codec="h264_nvenc",  # Changed from "libx264" to "h264_nvenc"
             threads=os.cpu_count(),
-            ffmpeg_params=['-movflags', 'faststart', '-g', '30', '-bf', '0']
+            ffmpeg_params=['-movflags', 'faststart']
+        )
         # | 3551/4343 [08:35<02:15,  5.83it/s, now=Non -- size was 1920x1080
+        # '-g', '30', '-bf', '0'] didn't help
         # reducing size by 4x didn't help much
         #  '-tune', 'zerolatency' didn't help at all
-        # video_clip.write_videofile(
-        #     video_path,
-        #     fps=video_clip.fps,  # type: ignore
-        #     audio_codec="aac",
-        #     preset="ultrafast",
-        #     codec="libx264",
-        #     threads=os.cpu_count(),
-        #     ffmpeg_params=['-movflags', 'faststart']
-        )
         return True
     except Exception as e:
         console.print(e, style="red")

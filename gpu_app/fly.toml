@@ -1,7 +1,9 @@
 # fly.toml app configuration file generated for gpu-product-horse on 2024-08-30T16:07:16-07:00
 #
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
-# change .size to when you are ready   size = 'a100-80gb'
+# change .size to when you are ready    memory = '4gb'
+#  cpu_kind = 'shared'
+ # cpus = 2
 
 app = 'gpu-product-horse'
 primary_region = 'sjc'
@@ -17,6 +19,4 @@ primary_region = 'sjc'
   processes = ['app']
 
 [[vm]]
-  memory = '4gb'
-  cpu_kind = 'shared'
-  cpus = 2
+  size = 'a100-80gb'
