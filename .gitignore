@@ -37,3 +37,6 @@ integration-text-data.sql
 vector_db_backup.sql
 
 .wrangler
+
+*.whl
+*.tar.gz
