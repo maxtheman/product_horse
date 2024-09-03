@@ -11,7 +11,7 @@ import { toast } from "sonner"
 import { Form, FormField, FormItem, FormLabel, FormControl } from "@/components/ui/form"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card"
-import { useMutation, useQuery, useClient } from 'urql';
+import { useMutation, useQuery } from 'urql';
 import { useEffect, useState, useRef } from "react";
 import { z } from "zod"
 import { zodResolver } from "@hookform/resolvers/zod"
