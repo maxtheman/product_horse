@@ -682,10 +682,11 @@ const VideoPlayer = ({ id }: { id: string }) => {
       setDuration(player.duration() || 0);
     });
 
-    player.on('error', async () => {
-      setError(`Failed to load the video: ${player.error()?.message || 'Unknown error'}`);
+    player.on('error', () => {
+      const errorMessage = player.error()?.message || 'Unknown error';
+      setError(`Failed to load the video: ${errorMessage}`);
       // Re-run the query to get a new signed URL
-      await reexecuteQuery({ requestPolicy: 'network-only' });
+      reexecuteQuery({ requestPolicy: 'network-only' });
     });
   };
 
@@ -740,11 +741,16 @@ const VideoPlayer = ({ id }: { id: string }) => {
           <CardDescription>Status: {renderStatus}</CardDescription>
         </CardHeader>
         <CardContent>
-          {renderStatus === 'complete' && signedUrl && (
+          {renderStatus === 'complete' && signedUrl && !error && (
             <div className="space-y-4">
               <VideoJS options={videoJsOptions} onReady={handlePlayerReady} />
               <div className="flex items-center space-x-2">
-                <Button size="icon" variant="ghost" onClick={() => player?.paused() ? player?.play() : player?.pause()}>
+                <Button 
+                  size="icon" 
+                  variant="ghost" 
+                  onClick={() => player?.paused() ? player?.play() : player?.pause()}
+                  disabled={!player}
+                >
                   {player?.paused() ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}
                 </Button>
                 <span className="text-sm">{formatTime(currentTime)}</span>
@@ -755,9 +761,15 @@ const VideoPlayer = ({ id }: { id: string }) => {
                   value={[currentTime]}
                   onValueChange={(value) => player?.currentTime(value[0])}
                   className="w-full"
+                  disabled={!player}
                 />
                 <span className="text-sm">{formatTime(duration)}</span>
-                <Button size="icon" variant="ghost" onClick={() => player?.muted(!player.muted())}>
+                <Button 
+                  size="icon" 
+                  variant="ghost" 
+                  onClick={() => player?.muted(!player.muted())}
+                  disabled={!player}
+                >
                   {player?.muted() ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
                 </Button>
                 <Slider
@@ -767,6 +779,7 @@ const VideoPlayer = ({ id }: { id: string }) => {
                   value={[player?.volume() || 0]}
                   onValueChange={(value) => player?.volume(value[0])}
                   className="w-24"
+                  disabled={!player}
                 />
               </div>
             </div>
@@ -775,7 +788,7 @@ const VideoPlayer = ({ id }: { id: string }) => {
             <div className="mt-4 space-y-4">
               <AnimatedErrorMessage message={error} />
               <p className="text-sm text-gray-600">
-                Our streaming infrastructure is a little buggy. We apologize for the inconvenience. Please try playing the video again or download it using the link below.
+                Our streaming infrastructure is experiencing issues. We apologize for the inconvenience. Please try playing the video again or download it using the link below.
               </p>
               <Button asChild>
                 <a href={signedUrl} download={`${title}.mp4`}>
