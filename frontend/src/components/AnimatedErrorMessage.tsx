@@ -20,4 +20,4 @@ export const AnimatedErrorMessage: React.FC<AnimatedErrorMessageProps> = ({ mess
         )}
       </AnimatePresence>
     );
-  };
+};

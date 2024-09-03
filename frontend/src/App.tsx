@@ -80,7 +80,8 @@ const UserList = () => {
   const client = useClient();
   useEffect(() => {
     getUsers(client)
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
 
   if (!users.loaded) return (
     <div className="space-y-2">
