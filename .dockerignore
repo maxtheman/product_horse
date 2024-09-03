@@ -4,7 +4,6 @@
 **/__pycache__
 **/*.py[oc]
 **/build
-**/dist
 **/wheels
 **/*.egg-info
 **/.env
@@ -255,7 +254,6 @@ _proc/.quarto
 product_horse/**/__pycache__
 product_horse/**/*.py[oc]
 product_horse/**/build
-product_horse/**/dist
 product_horse/**/wheels
 product_horse/**/*.egg-info
 
@@ -265,12 +263,6 @@ product_horse/**/.venv
 product_horse/**/.DS_Store
 
 # flyctl launch added from storage_client/.gitignore
-storage_client/**/__pycache__
-storage_client/**/build
-storage_client/**/dist
-storage_client/**/*.egg-info
-storage_client/**/.pytest_cache
-
 # pyenv
 storage_client/**/.python-version
 

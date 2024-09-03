@@ -101,19 +101,38 @@ async def run_remote_create_video(
         )
     user = database.as_employee(employee).get_all_users()[0]
     final_destination = await r2.get_unique_file_key(f"{title}.mp4", str(user.id))
-    video = await create_video_from_utterances(
-        video_id=str(video_id),
-        db=database,
-        remote_file_system=r2,
-        local_file_system=server_file_system,
-        employee=employee,
-        user=user,
-        utterance_segments=utterance_segments_for_video,
-        final_destination=final_destination,
-        title=title,
-        size=size,
-        force_size=force_size,
-    )
+    video = None
+    try:
+        video = await create_video_from_utterances(
+            video_id=str(video_id),
+            db=database,
+            remote_file_system=r2,
+            local_file_system=server_file_system,
+            employee=employee,
+            user=user,
+            utterance_segments=utterance_segments_for_video,
+            final_destination=final_destination,
+            title=title,
+            size=size,
+            force_size=force_size,
+        )
+    except Exception as e:
+        if "Failed to download file" in str(e):
+            video = await create_video_from_utterances(
+            video_id=str(video_id),
+            db=database,
+            remote_file_system=r2,
+            local_file_system=server_file_system,
+            employee=employee,
+            user=user,
+            utterance_segments=utterance_segments_for_video,
+            final_destination=final_destination,
+            title=title,
+            size=size,
+                force_size=force_size,
+            )
+        else:
+            raise e
     return video
 
 # %% ../nbs/06_run_modal.ipynb 7

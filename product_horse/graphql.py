@@ -56,6 +56,7 @@ from product_horse.db import (
     UnvalidatedTranscription,
     UnvalidatedUtterance,
     UnvalidatedVideo,
+    RenderStatus,
     FileType as DbFileType,
 )
 from datetime import datetime, timedelta, timezone
@@ -462,12 +463,20 @@ async def create_video_async(
         try:
             async with session.post(f"{api_url}/create_video", json=request_data_json, headers=headers) as response:
                 logger.info(f"Response: {response}")
-                if response.status != 202:
+                if 200 <= response.status <= 299:
+                    logger.info("Video creation request sent successfully")
+                else:
                     logger.error(f"Error: Received status code {response.status}")
                     response_text = await response.text()
+                    employee= database_superuser.get_employee(employee_id)
+                    if employee is None:
+                        raise Exception("Employee not found")
+                    video = database.as_employee(employee).get_video(video_id) # type: ignore
+                    if video is None:
+                        raise Exception("Video not found")
+                    video.render_status = RenderStatus.failed
+                    database.as_employee(employee).save_video(video) # type: ignore
                     logger.error(f"Response body: {response_text}")
-                else:
-                    logger.info("Video creation request sent successfully")
         except aiohttp.ClientError as e:
             logger.error(f"Error sending request: {str(e)}")
 

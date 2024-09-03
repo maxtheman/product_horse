@@ -6,7 +6,7 @@
  # cpus = 2
 
 app = 'gpu-product-horse'
-primary_region = 'sjc'
+primary_region = 'ord'
 
 [build]
   dockerfile = "Dockerfile"
@@ -19,4 +19,4 @@ primary_region = 'sjc'
   processes = ['app']
 
 [[vm]]
-  size = 'a100-80gb'
+  size = 'a10'

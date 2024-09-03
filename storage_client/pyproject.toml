@@ -5,7 +5,7 @@ description = "A client library for accessing storage"
 authors = []
 readme = "README.md"
 packages = [
-    {include = "storage_client"},
+    {include = "src"},
 ]
 include = ["CHANGELOG.md", "storage_client/py.typed"]
 

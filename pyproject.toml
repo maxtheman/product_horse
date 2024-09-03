@@ -19,16 +19,13 @@ dependencies = [
     "litellm>=1.34.5",
     "llama-index-readers-database>=0.1.3",
     "llama-index-llms-anthropic>=0.1.7",
-    "scipy>=1.14.0",
     "strawberry-graphql[debug-server]>=0.235.1",
     "passlib>=1.7.4",
     "fastapi[standard]>=0.112.1",
     "pyjwt>=2.8.0",
     "llama-index-vector-stores-postgres>=0.1.14",
     "instructor>=1.3.7",
-    "modal>=0.64.60",
     "assemblyai>=0.23.1",
-    "psycopg2>=2.9.9",
     "tenacity>=8.2.3",
     "rich>=13.0.0",
     "sqlalchemy>=2.0.0",
@@ -37,7 +34,6 @@ dependencies = [
     "moviepy[media]>=1.0.3",
     "pyav[media]>=12.3.0",
     "seewav[media]>=0.1.0",
-    "psycopg2-binary>=2.9.9",
     "aiohttp>=3.10.5",
 ]
 readme = "README.md"
@@ -60,7 +56,7 @@ setup_d1_local = 'npx wrangler d1 execute ph-storage-db --file=/Users/max/Docume
 setup_d1_remote = 'npx wrangler d1 execute ph-storage-db --file=/Users/max/Documents/product_horse/sql_files/setup_d1.sql --remote'
 build_storage_client = 'rye run openapi-python-client generate --path /Users/max/Documents/product_horse/workers/openapi.yaml --output-path /Users/max/Documents/product_horse/storage_client --overwrite'
 deploy_worker='npx wrangler deploy'
-export_nomedia = "./gen_no_media_reqs.sh"
+export_nomedia_reqs = "./gen_no_media_reqs.sh"
 deploy_gpu_app = "fly deploy -c gpu_app/fly.toml"
 
 [build-system]
@@ -75,7 +71,7 @@ managed = true
 virtual = true
 features = []
 dev-dependencies = [
-   "jupyterlab>=4.1.5",
+    "jupyterlab>=4.1.5",
     "nbdev>=2.3.13",
     "hypothesis>=6.99.9",
     "cloudflare-python>=1.0.1",
@@ -86,12 +82,12 @@ dev-dependencies = [
     "accelerate>=0.28.0",
     "setuptools>=69.2.0",
     "pandas>=2.2.1",
-    "gradio>=4.23.0",
     "tqdm>=4.66.2",
     "beautifulsoup4>=4.12.3",
     "multiprocess>=0.70.16",
     "openapi-python-client>=0.21.2",
     "certifi>=2024.7.4",
+    "hatch>=1.12.0",
 ]
 
 [tool.hatch.metadata]
