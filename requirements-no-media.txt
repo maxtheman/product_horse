@@ -232,6 +232,7 @@ pillow==10.4.0
     # via llama-index-core
 proglog==0.1.10
     # via moviepy
+psycopg2==2.9.9
 psycopg2-binary==2.9.9
     # via llama-index-vector-stores-postgres
 pyasn1==0.6.0
