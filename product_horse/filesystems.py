@@ -272,13 +272,16 @@ class LocalFileSystem(AbstractFileSystem):
         unique_name =quote(f"{base_name}_{timestamp}{extension}")
         return unique_name
     
-    def generate_file_key(self, file_name: str, user_id: str) -> str:
+    def generate_file_key(self, file_name: str, user_id: str, include_base_path: bool = True) -> str:
         # Implement file key generation logic
-        return quote(f"{self.base_path}/{user_id}/{file_name}")
+        if include_base_path:
+            return quote(f"{self.base_path}/{user_id}/{file_name}")
+        else:
+            return quote(f"{user_id}/{file_name}")
 
-    async def get_unique_file_key(self, original_name: str, user_id: str) -> str:
+    async def get_unique_file_key(self, original_name: str, user_id: str, include_base_path: bool = True) -> str:
         unique_name = self.generate_unique_file_name(original_name, user_id)
-        file_key = self.generate_file_key(unique_name, user_id)
+        file_key = self.generate_file_key(unique_name, user_id, include_base_path)
         
         while await self.file_exists(file_key):
             unique_name = self.generate_unique_file_name(original_name, user_id)
@@ -394,9 +397,12 @@ class R2StorageClient(AbstractFileSystem):
         # Implement file name sanitization
         return quote(file_name)
 
-    def generate_file_key(self, file_name: str, user_id: str) -> str:
+    def generate_file_key(self, file_name: str, user_id: str, include_base_path: bool = True) -> str:
         # Implement file key generation logic
-        return quote(f"{self.base_path}/{user_id}/{file_name}")
+        if include_base_path:
+            return quote(f"{self.base_path}/{user_id}/{file_name}")
+        else:
+            return quote(f"{user_id}/{file_name}")
 
     async def file_exists(self, file_key: str) -> bool:
         # Check if a file exists in R2
@@ -412,9 +418,9 @@ class R2StorageClient(AbstractFileSystem):
         unique_name =quote(f"{base_name}_{timestamp}{extension}")
         return unique_name
 
-    async def get_unique_file_key(self, original_name: str, user_id: str) -> str:
+    async def get_unique_file_key(self, original_name: str, user_id: str, include_base_path: bool = True) -> str:
         unique_name = self.generate_unique_file_name(original_name, user_id)
-        file_key = self.generate_file_key(unique_name, user_id)
+        file_key = self.generate_file_key(unique_name, user_id, include_base_path)
         
         while await self.file_exists(file_key):
             unique_name = self.generate_unique_file_name(original_name, user_id)

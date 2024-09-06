@@ -9,5 +9,8 @@
   },
   "[typescript]": {
     "editor.defaultFormatter": "vscode.typescript-language-features"
+  },
+  "files.associations": {
+    "stdio.h": "c"
   }
 }

@@ -221,7 +221,7 @@ def handle_form_validation_errors(
 from .db import Transcription
 
 
-def create_presigned_url(object_name: str, expiration: int = 3600) -> Optional[str]:
+def create_presigned_url(object_name: str, expiration: int = 3600, method: str = "get_object") -> Optional[str]:
     """Generate a presigned URL to share an S3 object
 
     :param bucket_name: string
@@ -234,7 +234,7 @@ def create_presigned_url(object_name: str, expiration: int = 3600) -> Optional[s
         response = cast(
             str,
             s3_client.generate_presigned_url(
-                "get_object",  # type: ignore
+                method,  # type: ignore
                 Params={"Bucket": "ph-storage", "Key": object_name},
                 ExpiresIn=expiration,
             ),

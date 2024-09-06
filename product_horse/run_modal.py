@@ -29,11 +29,11 @@ api_key = os.getenv("ASSEMBLYAI_API_KEY")
 if not api_key:
     raise ValueError("ASSEMBLYAI_API_KEY environment variable not found")
 
+
 async def run_remote_create_video(
     video_id: UUID,
     utterance_segments_inputs: list[UtteranceSegmentInput],
     employee_id: UUID,
-    jwt: str,
     title: str,
     size: Tuple[int, int] = (1920, 1080),
     force_size: bool = True,
@@ -49,9 +49,7 @@ async def run_remote_create_video(
     if db_superuser_url is None:
         raise Exception("DATABASE_SUPERUSER_URL is not set")
     if db_url is None:
-        raise Exception(
-            f"Not Set: {'DATABASE_URL' if db_url is None else ''}"
-        )
+        raise Exception(f"Not Set: {'DATABASE_URL' if db_url is None else ''}")
     database_superuser = SqlModelDatabase(database_url=db_superuser_url)
     database = SqlModelDatabase(database_url=db_url)
     # run on superuser connection, since it's behind jwt auth
@@ -60,7 +58,7 @@ async def run_remote_create_video(
         raise Exception("Employee not found")
     # DEFINE FILE SYSTEMS
     remote_file_system = LocalFileSystem(
-        base_path='/storage',
+        base_path="/storage",
     )
     server_file_system = LocalFileSystem()
     # rest of program
@@ -68,9 +66,7 @@ async def run_remote_create_video(
         UUID(segment.utterance_id) for segment in utterance_segments_inputs
     ]
     word_ids = [
-        word_id
-        for segment in utterance_segments_inputs
-        for word_id in segment.word_ids
+        word_id for segment in utterance_segments_inputs for word_id in segment.word_ids
     ]
     utterances = database.as_employee(employee).get_utterances(
         utterance_ids, word_ids=word_ids
@@ -97,7 +93,9 @@ async def run_remote_create_video(
             )
         )
     user = database.as_employee(employee).get_all_users()[0]
-    final_destination = await remote_file_system.get_unique_file_key(f"{title}.mp4", str(user.id))
+    final_destination = await remote_file_system.get_unique_file_key(
+        f"{title}.mp4", str(user.id), include_base_path=False
+    )
     video = None
     try:
         video = await create_video_from_utterances(
@@ -142,15 +140,18 @@ class CreateVideoRequest(BaseModel):
     size: Tuple[int, int] = (1920, 1080)
     force_size: bool = True
 
+
 class JwtPayload(TypedDict):
     id: UUID
     company_id: UUID
     exp: float
     permission_level: DbPermissionLevel
 
+
 secret = os.getenv("SECRET")
 if not secret:
     raise Exception("JWT_SECRET environment variable not found")
+
 
 def decode_jwt(token: str) -> JwtPayload:
     payload = cast(JwtPayload, jwt.decode(token, secret, algorithms=["HS256"]))  # type: ignore
@@ -163,18 +164,19 @@ def decode_jwt(token: str) -> JwtPayload:
         raise InvalidTokenError
     return payload
 
+
 @app.post("/create_video", response_model=Video)
 async def create_video(request: CreateVideoRequest, authorization: str = Header(...)):
     try:
         # Extract the token from the Authorization header
         token = authorization.split("Bearer ")[-1]
-        
+
         # Decode and validate the JWT
         payload = decode_jwt(token)
-        
+
         # Extract employee_id from the decoded JWT
         employee_id = payload["id"]
-        
+
         video = await run_remote_create_video(
             video_id=request.video_id,
             utterance_segments_inputs=request.utterance_segments_inputs,
@@ -182,7 +184,7 @@ async def create_video(request: CreateVideoRequest, authorization: str = Header(
             jwt=token,
             title=request.title,
             size=request.size,
-            force_size=request.force_size
+            force_size=request.force_size,
         )
         return video
     except InvalidTokenError:
