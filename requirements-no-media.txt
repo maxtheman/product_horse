@@ -30,6 +30,10 @@ attrs==24.2.0
     # via referencing
 beautifulsoup4==4.12.3
     # via llama-index-readers-file
+boto3==1.35.13
+botocore==1.35.13
+    # via boto3
+    # via s3transfer
 cachetools==5.5.0
     # via google-auth
 certifi==2024.8.30
@@ -117,6 +121,9 @@ jiter==0.4.2
     # via anthropic
     # via instructor
     # via openai
+jmespath==1.0.1
+    # via boto3
+    # via botocore
 joblib==1.4.2
     # via nltk
 jsonschema==4.23.0
@@ -262,6 +269,7 @@ pyjwt==2.9.0
 pypdf==4.3.1
     # via llama-index-readers-file
 python-dateutil==2.9.0.post0
+    # via botocore
     # via pandas
     # via strawberry-graphql
 python-dotenv==1.0.1
@@ -299,6 +307,8 @@ rpds-py==0.20.0
     # via referencing
 rsa==4.9
     # via google-auth
+s3transfer==0.10.2
+    # via boto3
     # via imageio-ffmpeg
 shellingham==1.5.4
     # via typer
@@ -370,6 +380,7 @@ typing-inspect==0.9.0
 tzdata==2024.1
     # via pandas
 urllib3==2.2.2
+    # via botocore
     # via requests
 uvicorn==0.30.6
     # via fastapi

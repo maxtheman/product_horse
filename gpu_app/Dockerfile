@@ -144,20 +144,34 @@ RUN if [ -z "$(ls -A /app/storage_client)" ]; then \
     echo "Error: storage_client directory is empty" && exit 1; \
 fi
 
-
 # Install the wheel file and the local dependency
-RUN pip3 install --no-cache-dir --upgrade pip && \
-    pip3 install --no-cache-dir product_horse-0.1.0-py3-none-any.whl && \
-    pip3 install --no-cache-dir /app/storage_client
+RUN pip3 install --upgrade pip && \
+    pip3 install product_horse-0.1.0-py3-none-any.whl && \
+    pip3 install /app/storage_client
 
 # Remove the copied dist files to keep the image clean
 RUN rm product_horse-0.1.0-py3-none-any.whl product_horse-0.1.0.tar.gz
 
+RUN apt-get update && apt-get install -y s3fs
+
 # Copy environment file
 COPY ../.env.production .
 
-# Expose the port FastAPI will run on
-EXPOSE 8000
+# Copy the private key from the secret
+COPY --chmod=0400 .env.keys.production .env.keys
+
+RUN mkdir -p ${HOME}/.aws
+RUN mkdir /storage
+RUN dotenvx run -f .env.production -- sh -c 'echo "${AWS_ACCESS_KEY_ID}:${AWS_SECRET_ACCESS_KEY}" > ${HOME}/.passwd-s3fs'
+RUN dotenvx run -f .env.production -- chmod 600 ${HOME}/.passwd-s3fs
+
+RUN rm .env.keys
+
+COPY gpu_app/start.sh /app/start.sh
+RUN chmod +x /app/start.sh
 
 # Command to run the FastAPI application
-CMD ["dotenvx", "run", "-f", ".env.production", "--", "uvicorn", "--host", "0.0.0.0", "--port", "8000", "--workers", "3", "product_horse.run_modal:app"]
+EXPOSE 8000
+
+# Use the startup script as the entrypoint
+ENTRYPOINT ["/app/start.sh"]

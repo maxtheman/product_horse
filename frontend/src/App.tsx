@@ -675,7 +675,9 @@ const VideoPlayer = ({ id }: { id: string }) => {
     setPlayer(player);
 
     player.on('timeupdate', () => {
-      setCurrentTime(player.currentTime() || 0);
+      console.log('timeupdate', player.currentTime());
+      const time = player.currentTime() || currentTime
+      setCurrentTime(time);
     });
 
     player.on('loadedmetadata', () => {
@@ -685,7 +687,6 @@ const VideoPlayer = ({ id }: { id: string }) => {
     player.on('error', () => {
       const errorMessage = player.error()?.message || 'Unknown error';
       setError(`Failed to load the video: ${errorMessage}`);
-      // Re-run the query to get a new signed URL
       reexecuteQuery({ requestPolicy: 'network-only' });
     });
   };
@@ -745,9 +746,9 @@ const VideoPlayer = ({ id }: { id: string }) => {
             <div className="space-y-4">
               <VideoJS options={videoJsOptions} onReady={handlePlayerReady} />
               <div className="flex items-center space-x-2">
-                <Button 
-                  size="icon" 
-                  variant="ghost" 
+                <Button
+                  size="icon"
+                  variant="ghost"
                   onClick={() => player?.paused() ? player?.play() : player?.pause()}
                   disabled={!player}
                 >
@@ -764,9 +765,9 @@ const VideoPlayer = ({ id }: { id: string }) => {
                   disabled={!player}
                 />
                 <span className="text-sm">{formatTime(duration)}</span>
-                <Button 
-                  size="icon" 
-                  variant="ghost" 
+                <Button
+                  size="icon"
+                  variant="ghost"
                   onClick={() => player?.muted(!player.muted())}
                   disabled={!player}
                 >
@@ -785,18 +786,20 @@ const VideoPlayer = ({ id }: { id: string }) => {
             </div>
           )}
           {error && (
-            <div className="mt-4 space-y-4">
+            <>
               <AnimatedErrorMessage message={error} />
               <p className="text-sm text-gray-600">
                 Our streaming infrastructure is experiencing issues. We apologize for the inconvenience. Please try playing the video again or download it using the link below.
               </p>
-              <Button asChild>
-                <a href={signedUrl} download={`${title}.mp4`}>
-                  Download Video
-                </a>
-              </Button>
-            </div>
+            </>
           )}
+          <div className="mt-4 space-y-4">
+            <Button asChild>
+              <a href={signedUrl} download={`${title}.mp4`}>
+                Download Video
+              </a>
+            </Button>
+          </div>
         </CardContent>
       </Card>
     </div>

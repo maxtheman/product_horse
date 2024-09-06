@@ -48,7 +48,6 @@ async def run_remote_create_video(
     db_superuser_url = os.getenv("DATABASE_SUPERUSER_URL")
     if db_superuser_url is None:
         raise Exception("DATABASE_SUPERUSER_URL is not set")
-    API_URL = "https://storage.producthorse.workers.dev/"
     if db_url is None:
         raise Exception(
             f"Not Set: {'DATABASE_URL' if db_url is None else ''}"
@@ -60,10 +59,8 @@ async def run_remote_create_video(
     if employee is None:
         raise Exception("Employee not found")
     # DEFINE FILE SYSTEMS
-    r2 = R2StorageClient(
-        api_url=API_URL,
-        base_path=str(employee.company_id),
-        jwt=jwt,
+    remote_file_system = LocalFileSystem(
+        base_path='/storage',
     )
     server_file_system = LocalFileSystem()
     # rest of program
@@ -100,13 +97,13 @@ async def run_remote_create_video(
             )
         )
     user = database.as_employee(employee).get_all_users()[0]
-    final_destination = await r2.get_unique_file_key(f"{title}.mp4", str(user.id))
+    final_destination = await remote_file_system.get_unique_file_key(f"{title}.mp4", str(user.id))
     video = None
     try:
         video = await create_video_from_utterances(
             video_id=str(video_id),
             db=database,
-            remote_file_system=r2,
+            remote_file_system=remote_file_system,
             local_file_system=server_file_system,
             employee=employee,
             user=user,
@@ -119,16 +116,16 @@ async def run_remote_create_video(
     except Exception as e:
         if "Failed to download file" in str(e):
             video = await create_video_from_utterances(
-            video_id=str(video_id),
-            db=database,
-            remote_file_system=r2,
-            local_file_system=server_file_system,
-            employee=employee,
-            user=user,
-            utterance_segments=utterance_segments_for_video,
-            final_destination=final_destination,
-            title=title,
-            size=size,
+                video_id=str(video_id),
+                db=database,
+                remote_file_system=remote_file_system,
+                local_file_system=server_file_system,
+                employee=employee,
+                user=user,
+                utterance_segments=utterance_segments_for_video,
+                final_destination=final_destination,
+                title=title,
+                size=size,
                 force_size=force_size,
             )
         else:

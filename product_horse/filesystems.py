@@ -7,7 +7,7 @@ __all__ = ['MAX_PART_SIZE', 'File', 'AudioFile', 'VideoFile', 'TextFile', 'FileS
            'LocalFileSystem', 'R2StorageClient']
 
 # %% ../nbs/01_filesystems.ipynb 4
-from typing import Generator, Optional, BinaryIO, IO, Any
+from typing import Generator, Optional, BinaryIO, IO, Any, cast
 from pydantic import BaseModel
 from .db import User
 from dataclasses import dataclass, field
@@ -17,6 +17,8 @@ from abc import ABC, abstractmethod
 import shutil
 from datetime import datetime
 from contextlib import contextmanager
+from pathlib import Path
+
 
 import io
 from storage_client import StorageClient
@@ -202,25 +204,28 @@ class LocalFileSystem(AbstractFileSystem):
     async def create_file(
         self: AbstractFileSystem,
         path: str,
-        content: bytes | io.BytesIO,
+        content: bytes | io.BytesIO | IO[Any],
         name: str,
-        authorized: bool = False,
+        authorized: bool = False, # remove eventually
     ) -> File:
-        if not authorized:
-            raise FileNotFoundError("Access denied")
-        if not self.check_exists(os.path.dirname(path)):
-            raise FileNotFoundError("Location doesn't exist")
-        sanitized_name = self.sanitize_characters(self.sanitize_filename(name))
-        if self.check_exists(path + "/" + sanitized_name):
+        """if the path does exist, it will create it."""
+        path_obj = Path(path)
+        if not path_obj.parent.exists():
+            path_obj.parent.mkdir(parents=True, exist_ok=True)
+        sanitized_name = Path(self.sanitize_characters(self.sanitize_filename(name)))
+        full_path = path_obj
+        if name not in str(full_path):
+            full_path = full_path / sanitized_name
+        if full_path.exists():
             raise FileExistsError("File already exists — use update_file instead")
-        if len(sanitized_name) == 0:
+        if len(str(sanitized_name)) == 0:
             raise ValueError("File name cannot be empty")
-        with open(path + "/" + sanitized_name, "wb") as f:
+        with full_path.open('wb') as f:
             if isinstance(content, bytes):
                 f.write(content)
             else:
                 shutil.copyfileobj(content, f)
-        return File(uri=path + "/" + sanitized_name)
+        return File(uri=str(full_path))
 
     def read_file(
         self: AbstractFileSystem, path: str, load_content: bool = False
@@ -235,10 +240,18 @@ class LocalFileSystem(AbstractFileSystem):
         return File(uri=path, content=content)
     
     def file_stream(self, path: str, mode: str = "rb") -> BinaryIO | IO[Any]:
-        if not os.path.isfile(path) and mode != "wb":
-            raise FileNotFoundError("File does not exist")
-        return open(path, mode)
-
+        full_path = os.path.join(self.base_path, path)
+        if mode == 'rb':
+            if not os.path.isfile(full_path):
+                raise FileNotFoundError(f"File does not exist: {full_path}")
+            return open(full_path, mode)
+        elif mode == 'wb':
+            # Ensure the directory exists
+            os.makedirs(os.path.dirname(full_path), exist_ok=True)
+            return open(full_path, mode)
+        else:
+            raise NotImplementedError("LocalFileSystem only supports read mode ('rb') and write mode ('wb')")
+    
     async def update_file(self: AbstractFileSystem, path: str, content: bytes) -> File:
         if not os.path.isfile(path):
             raise FileNotFoundError("File does not exist")
@@ -249,6 +262,29 @@ class LocalFileSystem(AbstractFileSystem):
             raise FileNotFoundError("File does not exist")
         os.remove(path)
         return File(uri=path)
+    
+    async def file_exists(self, path: str) -> bool:
+        return os.path.exists(path)
+    
+    def generate_unique_file_name(self, original_name: str, user_id: str) -> str:
+        base_name, extension = os.path.splitext(original_name)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        unique_name =quote(f"{base_name}_{timestamp}{extension}")
+        return unique_name
+    
+    def generate_file_key(self, file_name: str, user_id: str) -> str:
+        # Implement file key generation logic
+        return quote(f"{self.base_path}/{user_id}/{file_name}")
+
+    async def get_unique_file_key(self, original_name: str, user_id: str) -> str:
+        unique_name = self.generate_unique_file_name(original_name, user_id)
+        file_key = self.generate_file_key(unique_name, user_id)
+        
+        while await self.file_exists(file_key):
+            unique_name = self.generate_unique_file_name(original_name, user_id)
+            file_key = self.generate_file_key(unique_name, user_id)
+        
+        return file_key
 
     @contextmanager
     def temporary_user_directory(self, user: User) -> Generator[str, None, None]:
