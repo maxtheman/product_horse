@@ -1,0 +1,3 @@
+flyctl storage update product-horse-storage --clear-shadow
+
+when you're done migrating

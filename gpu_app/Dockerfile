@@ -137,17 +137,10 @@ RUN ffmpeg -encoders | grep -q h264_nvenc || (echo "h264_nvenc codec not found" 
 # /Users/max/Documents/product_horse/gpu_app/product_horse-0.1.0-py3-none-any.whl
 COPY gpu_app/product_horse-0.1.0-py3-none-any.whl ./
 COPY gpu_app/product_horse-0.1.0.tar.gz ./
-COPY ../storage_client /app/storage_client
-
-# Assert that storage_client is not empty
-RUN if [ -z "$(ls -A /app/storage_client)" ]; then \
-    echo "Error: storage_client directory is empty" && exit 1; \
-fi
 
 # Install the wheel file and the local dependency
 RUN pip3 install --upgrade pip && \
-    pip3 install product_horse-0.1.0-py3-none-any.whl && \
-    pip3 install /app/storage_client
+    pip3 install product_horse-0.1.0-py3-none-any.whl
 
 # Remove the copied dist files to keep the image clean
 RUN rm product_horse-0.1.0-py3-none-any.whl product_horse-0.1.0.tar.gz

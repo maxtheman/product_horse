@@ -62,6 +62,21 @@ export const SAVE_FILES_MUTATION = gql`
       filePath
       fileName
       fileStatus
+      uploadConfig {
+        type
+        destination {
+          ... on SinglePartUpload {
+            type
+            url
+          }
+          ... on MultiPartUploadUrls {
+            type
+            presignedUrls
+            completePostUrl
+            parts
+          }
+        }
+      }
     }
   }
 `;

@@ -26,6 +26,7 @@ log_message "Starting deployment process..."
 
 # Initialize status variables
 SYNC_STATUS=0
+FRONTEND_BUILD_STATUS=0
 EXPORT_STATUS=0
 BUILD_STATUS=0
 GPU_DEPLOY_STATUS=0
@@ -43,7 +44,16 @@ else
     log_message "Error: Failed to sync dependencies or generate requirements."
 fi
 
-# 0. Run nbdev_export
+# 0.1. Run frontend build
+log_message "Building frontend..."
+if npm run build --prefix frontend; then
+    FRONTEND_BUILD_STATUS=0
+else
+    FRONTEND_BUILD_STATUS=1
+    log_message "Error: Frontend build failed."
+fi
+
+# 0.2. Run nbdev_export
 log_message "Running nbdev_export..."
 if nbdev_export; then
     EXPORT_STATUS=0

@@ -10,7 +10,7 @@ from .db import SqlModelDatabase, UtteranceSegment, Video
 from .db import PermissionLevel as DbPermissionLevel
 from datetime import datetime, timezone
 from jwt.exceptions import InvalidTokenError
-from .filesystems import LocalFileSystem, R2StorageClient
+from .filesystems import LocalFileSystem
 from .graphql import UtteranceSegmentInput
 from uuid import UUID
 from random import randint
@@ -166,7 +166,7 @@ def decode_jwt(token: str) -> JwtPayload:
 
 
 @app.post("/create_video", response_model=Video)
-async def create_video(request: CreateVideoRequest, authorization: str = Header(...)):
+async def create_video(request: CreateVideoRequest, authorization: str = Header(...)) -> Video:
     try:
         # Extract the token from the Authorization header
         token = authorization.split("Bearer ")[-1]
@@ -177,14 +177,15 @@ async def create_video(request: CreateVideoRequest, authorization: str = Header(
         # Extract employee_id from the decoded JWT
         employee_id = payload["id"]
 
-        video = await run_remote_create_video(
-            video_id=request.video_id,
-            utterance_segments_inputs=request.utterance_segments_inputs,
-            employee_id=employee_id,
-            jwt=token,
-            title=request.title,
-            size=request.size,
-            force_size=request.force_size,
+        video = await cast(Video, run_remote_create_video(
+                video_id=request.video_id,
+                utterance_segments_inputs=request.utterance_segments_inputs,
+                employee_id=employee_id,
+                jwt=token,
+                title=request.title,
+                size=request.size,
+                    force_size=request.force_size,
+            )
         )
         return video
     except InvalidTokenError:

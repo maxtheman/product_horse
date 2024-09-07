@@ -36,7 +36,6 @@
     "react-hook-form": "^7.52.2",
     "react-player": "^2.16.0",
     "sonner": "^1.5.0",
-    "storage-client": "file:../storageClient",
     "tailwind-merge": "^2.5.2",
     "tailwindcss-animate": "^1.0.7",
     "urql": "^4.1.0",

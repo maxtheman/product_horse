@@ -13,9 +13,9 @@ RUN apt-get update && apt-get install -y \
 
 COPY requirements-no-media.txt ./
 COPY product_horse ./product_horse
-COPY storage_client ./storage_client
 COPY .env.production .
-# look into adding --no-cache-dir to this
+COPY frontend/dist ./frontend/dist
+
 RUN PYTHONDONTWRITEBYTECODE=1 pip install -r requirements-no-media.txt
 
 EXPOSE 8000

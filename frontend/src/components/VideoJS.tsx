@@ -34,7 +34,6 @@ export const VideoJS: React.FC<VideoJSProps> = (props) => {
     } else {
       const player = playerRef.current;
       
-      // Update player options
       player.autoplay(options.autoplay);
       player.src(options.sources || []);
     }

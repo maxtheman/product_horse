@@ -45,6 +45,7 @@ function handleForm<T>(result: OperationResult<T, object>, callback: (data: T) =
     }
     if (result.error) {
         try {
+            console.log(result.error.graphQLErrors)
             formErrors = result.error.graphQLErrors.map((error) => ({ field: error.path?.[0].toString() || 'root', type: 'custom', message: error.message }));
             return formErrors
         } catch {
@@ -110,11 +111,11 @@ const useMainStore = create<MainStore>((set, get) => ({
     addUser: async (client: Client, data: UserFormData) => {
         set({ isSubmittingForm: true });
         const result = await client.mutation(SAVE_USER_MUTATION, data).toPromise();
-        const formErrors = handleForm(result, () => {
-            get().getUsers(client).catch(console.error);
-        })
+        const formErrors = handleForm(result, async () => {
+            await get().getUsers(client)
+        });
         set({ isSubmittingForm: false });
-        return formErrors
+        return formErrors;
     },
 }));
 

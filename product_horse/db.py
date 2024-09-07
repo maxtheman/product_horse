@@ -484,13 +484,14 @@ def permission_required(level: PermissionLevel):
     ) -> Callable[Concatenate[DBType, P], T]:
         """Decorator to require a certain permission level for a function. Unsets employee at the end of the function."""
 
-        @wraps(func)
-        @retry(
-            stop=stop_after_attempt(3),
-            wait=wait_exponential(multiplier=1, min=4, max=10),
-            retry=retry_if_exception_type((DBAPIError, SQLAlchemyError, ConnectionError)),
-            reraise=True
-        )
+        @wraps(func)    
+        # I dont' think I need this retry anymore, but I'm not sure
+        # @retry(
+        #     stop=stop_after_attempt(3),
+        #     wait=wait_exponential(multiplier=1, min=4, max=10),
+        #     retry=retry_if_exception_type((DBAPIError, SQLAlchemyError, ConnectionError)),
+        #     reraise=True
+        # )
         def wrapper(self: DBType, *args: P.args, **kwargs: P.kwargs) -> T:
             def clear_all_vars(self: DBType):
                 new_session = self.get_session_for_employee(public=True)
