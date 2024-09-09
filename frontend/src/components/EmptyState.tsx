@@ -57,7 +57,7 @@ export const EmptyState = ({ showAddUser = true, showUploadResearch = true, show
               </Button>
             )}
             {showAskQuestion && (
-              <Button className="justify-between w-full" variant={variantClasses()[2] as "default" | "outline" | "secondary"} size="lg" onClick={() => navigate("/utterances")}>
+              <Button className="justify-between w-full" variant={variantClasses()[2] as "default" | "outline" | "secondary"} size="lg" onClick={() => navigate("/clips")}>
                 <span className="flex items-center">
                   <Search className="w-5 h-5 mr-2" />
                   Ask a Question

@@ -307,7 +307,6 @@ async def run_remote_transcribe_and_save_file(
     signed_url = create_presigned_url(metadata.file_path)
     if signed_url is None:
         raise Exception("Failed to create presigned URL")
-    print("transcribe_and_save_file")
     return await transcribe_and_save_file(
         db=database,
         file_metadata=file_metadata,
@@ -447,7 +446,8 @@ class FileMetadataInput:
 
 @strawberry.type
 class MultiPartUploadUrls:
-    type: str
+    type: str = "multi"
+    upload_id: str
     presigned_urls: list[str]
     complete_post_url: str
     parts: int
@@ -561,9 +561,11 @@ def create_multipart_upload_urls(
     object_name: str,
     file_size: int,
     expiration: int = 3600,
-    bucket: str = "product-horse-storage",
 ) -> MultiPartUploadUrls:
     # Create multipart upload
+    bucket = os.getenv("FLY_BUCKET_NAME")
+    if bucket is None:
+        raise Exception("FLY_BUCKET_NAME is not set")
     response = s3_client.create_multipart_upload(Bucket=bucket, Key=object_name)  # type: ignore
     upload_id: str = response["UploadId"]  # type: ignore
 
@@ -610,6 +612,7 @@ class Query:
 
     @strawberry.field(permission_classes=[IsAuthenticated])
     def get_transcripts(self, info: strawberry.Info) -> Sequence[Transcription]:
+        print("get_transcripts")
         transcripts = database.as_employee(
             info.context.employee
         ).get_all_unique_transcriptions(mode="file_name")
@@ -889,6 +892,7 @@ origins = [
     "http://127.0.0.1:8000",
     "http://127.0.0.1:3000",
     "http://127.0.0.1:5173",
+    "http://localhost:5173",
     "https://product-horse.fly.dev",
 ]
 

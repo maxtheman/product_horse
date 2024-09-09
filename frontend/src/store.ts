@@ -33,8 +33,14 @@ interface MainStore {
     signup: (client: Client, data: SignupFormData) => Promise<FormError[]>;
     login: (client: Client, data: LoginFormData) => Promise<FormError[]>;
     users: Users;
+    activeItemName: string;
+    setActiveItemName: (name: string) => void;
     getUsers: (client: Client) => Promise<void>;
     addUser: (client: Client, data: UserFormData) => Promise<FormError[]>;
+    navExpanded: boolean;
+    setNavExpanded: (expanded: boolean) => void;
+    shouldRefetchUsers: boolean;
+    setShouldRefetchUsers: (value: boolean) => void;
 }
 
 function handleForm<T>(result: OperationResult<T, object>, callback: (data: T) => void): FormError[] {
@@ -99,24 +105,39 @@ const useMainStore = create<MainStore>((set, get) => ({
         users: [],
         errors: null
     },
+    activeItemName: "",
+    setActiveItemName: (name: string) => {
+        set({ activeItemName: name });
+    },
     getUsers: async (client: Client) => {
         set({ users: { loaded: false, users: [], errors: null } });
         const result = await client.query(GET_USERS_QUERY, {}).toPromise();
+        console.log(result) // might be a more efficient way to do this, check the result for more attributes
         set({ users: {
             loaded: true,
-            users: result.data.getUsers,
-            errors: result.error?.graphQLErrors.map((error) => error.message) || null
-        } });
+            users: result?.data?.getUsers || [],
+            errors: result?.error?.graphQLErrors.map((error) => error.message) || null
+        }, shouldRefetchUsers: false});
     },
     addUser: async (client: Client, data: UserFormData) => {
         set({ isSubmittingForm: true });
         const result = await client.mutation(SAVE_USER_MUTATION, data).toPromise();
         const formErrors = handleForm(result, async () => {
-            await get().getUsers(client)
+            set((state) => ({
+                users: {
+                  ...state.users,
+                  users: [...state.users.users, result?.data?.saveUser]
+                },
+                shouldRefetchUsers: true
+            }));
         });
         set({ isSubmittingForm: false });
         return formErrors;
     },
+    navExpanded: false,
+    setNavExpanded: (expanded) => set({ navExpanded: expanded }),
+    shouldRefetchUsers: false,
+    setShouldRefetchUsers: (value: boolean) => set({ shouldRefetchUsers: value }),
 }));
 
 export default useMainStore;

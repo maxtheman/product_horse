@@ -4,21 +4,8 @@ import { useEffect, useState, lazy, Suspense } from "react";
 import { z } from "zod"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm, Controller } from "react-hook-form"
-import { motion, AnimatePresence } from "framer-motion";
 import {
-  NavigationMenu,
-  NavigationMenuList,
-  NavigationMenuItem,
-  NavigationMenuLink,
-  navigationMenuTriggerStyle,
-} from "@/components/ui/navigation-menu";
-import { cn } from "@/lib/utils"
-import {
-  Users,
-  UserPlus,
   Search,
-  Video,
-  LogOut,
   CircleDot,
   PlusCircle,
   Eye,
@@ -28,7 +15,6 @@ import {
   RotateCcw,
   Volume2,
   VolumeX,
-  LucideIcon
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -40,7 +26,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card"
 import { Slider } from "@/components/ui/slider"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { useLocation, Router, Switch, Route, Link } from "wouter"
+import { useLocation, Router, Switch, Route } from "wouter"
 import { PulsingButton } from "@/components/PulsingButton";
 import { AnimatedErrorMessage } from "@/components/AnimatedErrorMessage";
 import { EmptyState } from "@/components/EmptyState";
@@ -52,6 +38,8 @@ const Logout = lazy(() => import("@/components/auth/Logout"));
 const UserList = lazy(() => import("@/components/users/UserList"));
 const VideoJS = lazy(() => import("@/components/VideoJS"));
 const SaveFilesForm = lazy(() => import("@/components/SaveFilesForm"));
+// const VideoEditor = lazy(() => import("@/components/video-editor"));
+const Navigation = lazy(() => import("@/components/Navigation"));
 import type Player from 'video.js/dist/types/player';
 
 // TODOS:
@@ -92,7 +80,6 @@ const GetUtterancesForm = () => {
     resolver: zodResolver(utterancesSchema),
     defaultValues: { question: "", transcriptIds: [] }
   })
-  // https://db59eb944db359472048f5e9a5dbc7d7.r2.cloudflarestorage.com
 
   const onSubmit = async (data: z.infer<typeof utterancesSchema>) => {
     setIsSubmitting(true);
@@ -151,7 +138,7 @@ const GetUtterancesForm = () => {
 
   const transcripts = transcriptsResult.data?.getTranscripts || []
   const allTranscriptIds = transcripts.map((t: { id: string }) => t.id)
-
+  
   if (transcriptsResult.fetching) {
     return (
       <div className="container py-10 mx-auto space-y-4">
@@ -294,6 +281,7 @@ const GetUtterancesForm = () => {
 
 // CREATE AND GET VIDEO
 const VideoList = () => {
+
   const [result, refetch] = useQuery({ query: GET_ALL_VIDEOS_QUERY });
   const [, navigate] = useLocation();
 
@@ -310,7 +298,7 @@ const VideoList = () => {
       <div className="container py-10 mx-auto">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-3xl font-bold tracking-tight">Videos</h1>
-          <Button onClick={() => navigate("/utterances")}>
+          <Button onClick={() => navigate("/clips")}>
             <PlusCircle className="w-4 h-4 mr-2" />
             Create Video
           </Button>
@@ -324,7 +312,7 @@ const VideoList = () => {
     <div className="container py-10 mx-auto">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-3xl font-bold tracking-tight">Videos</h1>
-        <Button onClick={() => navigate("/utterances")}>
+        <Button onClick={() => navigate("/clips")}>
           <PlusCircle className="w-4 h-4 mr-2" />
           Create Video
         </Button>
@@ -386,6 +374,8 @@ const VideoPlayer = ({ id }: { id: string }) => {
   const [duration, setDuration] = useState(0);
   const [, navigate] = useLocation();
 
+  const setActiveItemName = useMainStore((state) => state.setActiveItemName);
+
   const handlePlayerReady = (player: Player) => {
     setPlayer(player);
 
@@ -428,8 +418,9 @@ const VideoPlayer = ({ id }: { id: string }) => {
     </div>
   );
   if (result.error) return <AnimatedErrorMessage message={result.error.message} />;
-
   const { title, signedUrl, renderStatus } = result.data.getVideo;
+  setActiveItemName(title);
+
 
   const videoJsOptions = {
     autoplay: false,
@@ -441,6 +432,8 @@ const VideoPlayer = ({ id }: { id: string }) => {
       type: 'video/mp4'
     }]
   };
+
+
 
   return (
     <div className="container py-10 mx-auto">
@@ -523,131 +516,6 @@ const VideoPlayer = ({ id }: { id: string }) => {
   );
 };
 
-// Nav and Routing
-
-interface Route {
-  path: string;
-  label: string;
-  icon: LucideIcon;
-  isDynamic?: boolean;
-}
-
-const routes: Route[] = [
-  { path: "/", label: "Contacts", icon: Users },
-  { path: "/new-user", label: "New Contact", icon: UserPlus },
-  { path: "/utterances", label: "Search for Clips", icon: Search },
-  { path: "/videos", label: "Videos", icon: Video },
-  { path: "/logout", label: "Logout", icon: LogOut },
-];
-
-const Navigation = () => {
-  const [location] = useLocation();
-  const [activeItem, setActiveItem] = useState("/");
-  const [currentRoutes, setCurrentRoutes] = useState(routes);
-
-  useEffect(() => {
-    setActiveItem(location);
-
-    const updatedRoutes = [...routes];
-    const userMatch = location.match(/^\/users\/([^/]+)/);
-    const videoMatch = location.match(/^\/videos\/([^/]+)/);
-
-    if (userMatch) {
-      const userId = userMatch[1];
-      const userIndex = updatedRoutes.findIndex(route => route.path === "/");
-      if (userIndex !== -1) {
-        updatedRoutes.splice(userIndex + 1, 0, {
-          path: `/users/${userId}`,
-          label: `Users > ${userId.substring(0, 10)}...`,
-          icon: Users,
-          isDynamic: true
-        });
-      }
-    }
-
-    if (videoMatch) {
-      const videoId = videoMatch[1];
-      const videoIndex = updatedRoutes.findIndex(route => route.path === "/videos");
-      if (videoIndex !== -1) {
-        updatedRoutes.splice(videoIndex + 1, 0, {
-          path: `/videos/${videoId}`,
-          label: `Videos > ${videoId.substring(0, 10)}...`,
-          icon: Video,
-          isDynamic: true
-        });
-      }
-    }
-
-    setCurrentRoutes(updatedRoutes);
-  }, [location]);
-
-  const NavItem = ({ icon: Icon, children, path, isActive, isDynamic }: {
-    icon: LucideIcon;
-    children: React.ReactNode;
-    path: string;
-    isActive: boolean;
-    isDynamic: boolean;
-  }) => {
-    const content = (
-      <NavigationMenuItem className="w-full">
-        <Link href={path} className="w-full">
-          <NavigationMenuLink
-            className={cn(
-              navigationMenuTriggerStyle(),
-              "w-full justify-start",
-              isActive && "bg-accent",
-              path === "/logout" && "text-muted-foreground",
-              isDynamic ? "ml-5" : ""
-            )}
-          >
-            <Icon className="w-4 h-4 mr-2" />
-            {children}
-          </NavigationMenuLink>
-        </Link>
-      </NavigationMenuItem>
-    );
-
-    return isDynamic ? (
-      <motion.div
-        initial={{ opacity: 0, x: -20 }}
-        animate={{ opacity: 1, x: 0 }}
-        exit={{ opacity: 0, x: -20, transition: { duration: 0.1 } }}  // Faster exit
-        transition={{ duration: 0.2 }}
-        className="w-full"
-      >
-        {content}
-      </motion.div>
-    ) : content;
-  };
-
-  return (
-    <NavigationMenu orientation="vertical" className="max-w-[200px] w-full overflow-hidden flex flex-col justify-start border-r h-full">
-      <NavigationMenuList className="flex flex-col items-start flex-grow w-full p-2 space-y-1">
-        <NavigationMenuItem className="pl-4 mt-6 mb-4 text-2xl font-bold">
-          🐴
-        </NavigationMenuItem>
-        <AnimatePresence>
-          {currentRoutes.map((route) => (
-            <NavItem
-              key={route.path}
-              icon={route.icon}
-              path={route.path}
-              isActive={
-                route.path === '/'
-                  ? activeItem === '/'
-                  : activeItem.startsWith(route.path)
-              }
-              isDynamic={route.isDynamic || false}
-            >
-              {route.label}
-            </NavItem>
-          ))}
-        </AnimatePresence>
-      </NavigationMenuList>
-    </NavigationMenu>
-  );
-};
-
 const AppRouter = ({ token }: { token: string }) => {
   const [, navigate] = useLocation();
 
@@ -696,7 +564,7 @@ const AppRouter = ({ token }: { token: string }) => {
             <NewUserForm />
           </ProtectedRoute>
         </Route>
-        <Route path="/utterances">
+        <Route path="/clips">
           <ProtectedRoute>
             <GetUtterancesForm />
           </ProtectedRoute>
@@ -726,10 +594,11 @@ const AppRouter = ({ token }: { token: string }) => {
 function App() {
   const token = useMainStore((state) => state.authToken);
 
+
   return (
     <Router>
       <div className="flex h-screen">
-        {token ? <Navigation /> : null}
+        {token && <Navigation />}
         <div className="flex-1 p-4 overflow-auto bg-gray-50">
           <AppRouter token={token || ""} />
         </div>

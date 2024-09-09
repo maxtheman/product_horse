@@ -46,7 +46,7 @@ fi
 
 # 0.1. Run frontend build
 log_message "Building frontend..."
-if npm run build --prefix frontend; then
+if dotenvx run -f .env.production -- npm run build --prefix frontend; then
     FRONTEND_BUILD_STATUS=0
 else
     FRONTEND_BUILD_STATUS=1

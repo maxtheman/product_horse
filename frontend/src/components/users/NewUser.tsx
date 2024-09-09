@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card"
 import { UserPlus, ArrowLeft } from "lucide-react"
+import { toast } from "sonner"
 import { FormItem, FormControl } from "@/components/ui/form"
 import useMainStore from "@/store";
 import { handleFormErrors } from "@/utils/handleFormErrors"
@@ -30,6 +31,13 @@ const NewUserForm = () => {
         handleFormErrors(formErrors, form, ["userName", "externalId"])
         if (formErrors.length === 0) {
             form.reset()
+            toast.success("Contact added successfully", {
+                description: "Click to review your contacts and add research.",
+                action: {
+                    label: "View Contacts",
+                    onClick: () => navigate("/"),
+                },
+            })
         }
     }
 

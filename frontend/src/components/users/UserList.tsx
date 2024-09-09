@@ -1,6 +1,6 @@
 import { useLocation } from "wouter"
-import { useEffect } from "react"
-import { useClient } from 'urql';
+import { useClient } from 'urql'
+import { useEffect, useCallback } from "react"
 import { AnimatedErrorMessage } from "@/components/AnimatedErrorMessage"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card"
 import { Table, TableHeader, TableBody, TableRow, TableCell, TableHead } from "@/components/ui/table"
@@ -12,11 +12,22 @@ import { EmptyState } from "@/components/EmptyState"
 
 const UserList = () => {
   const [, navigate] = useLocation();
-  const { users, getUsers } = useMainStore();
-  const client = useClient();
+  const { users, getUsers, shouldRefetchUsers } = useMainStore((state) => ({
+    users: state.users,
+    getUsers: state.getUsers,
+    shouldRefetchUsers: state.shouldRefetchUsers
+  }));  const client = useClient();
+
+  const fetchUsers = useCallback(() => {
+    getUsers(client);
+  }, [getUsers, client]);
+
   useEffect(() => {
-    getUsers(client)
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+    if (shouldRefetchUsers) {
+      fetchUsers();
+    }
+  }, [shouldRefetchUsers, fetchUsers]);
+
 
 
   if (!users.loaded) return (

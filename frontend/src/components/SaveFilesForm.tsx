@@ -37,8 +37,8 @@ interface SinglePartUpload {
 
 interface MultiPartUploadUrls {
     type: 'multi';
-    urls: string[];
-    completeUrl: string;
+    presignedUrls: string[];
+    completePostUrl: string;
     parts: number;
 }
 const uploadFileToS3 = async (file: File, uploadConfig: UploadConfig): Promise<boolean> => {
@@ -54,11 +54,11 @@ const uploadFileToS3 = async (file: File, uploadConfig: UploadConfig): Promise<b
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
-        } else if (type === 'multi' && 'urls' in destination) {
+        } else if (type === 'multi' && 'presignedUrls' in destination) {
             console.log("uploading multi")
             const parts: { ETag: string; PartNumber: number }[] = [];
             for (let i = 0; i < destination.parts; i += 6) {
-                const uploadPromises = destination.urls.slice(i, i + 6).map(async (url, index) => {
+                const uploadPromises = destination.presignedUrls.slice(i, i + 6).map(async (url, index) => {
                     const partNumber = i + index + 1;
                     const start = (partNumber - 1) * (file.size / destination.parts);
                     const end = partNumber * (file.size / destination.parts);
@@ -79,11 +79,24 @@ const uploadFileToS3 = async (file: File, uploadConfig: UploadConfig): Promise<b
                 const uploadedParts = await Promise.all(uploadPromises);
                 parts.push(...uploadedParts);
             }
-            const completeResponse = await fetch(destination.completeUrl, {
+            console.log("parts", parts)
+            const xmlPayload = `
+                <CompleteMultipartUpload>
+                    ${parts.map(part => `
+                        <Part>
+                            <PartNumber>${part.PartNumber}</PartNumber>
+                            <ETag>${part.ETag}</ETag>
+                        </Part>
+                    `).join('')}
+                </CompleteMultipartUpload>
+            `;
+            const completeResponse = await fetch(destination.completePostUrl, {
                 method: 'POST',
-                body: JSON.stringify({ parts }),
+                body: xmlPayload,
+                headers: {
+                    'Content-Type': 'application/xml'
+                }
             });
-
             if (!completeResponse.ok) {
                 throw new Error('Failed to complete multipart upload');
             }
@@ -263,7 +276,7 @@ const SaveFilesForm = ({ userId }: { userId: string }) => {
                 description: `${savedFiles.length} file(s) processed. Ready to create videos.`,
                 action: {
                     label: "Create Video",
-                    onClick: () => navigate(`/utterances`),
+                    onClick: () => navigate(`/clips`),
                 },
             });
         } catch (error) {

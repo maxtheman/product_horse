@@ -1,10 +1,9 @@
-import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Client, cacheExchange, fetchExchange, Provider } from 'urql';
 import useMainStore from '@/store';
 import { Skeleton } from '@/components/ui/skeleton';
-import { lazy, Suspense } from 'react';
-const App = lazy(() => import('@/App'))
+import { Suspense } from 'react';
+import App from '@/App';
 import '@/index.css'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/graphql';
@@ -24,11 +23,9 @@ const client = new Client({
 });
 
 createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <Provider value={client}>
-      <Suspense fallback={<Skeleton className="w-full h-full" />}>
-        <App />
-      </Suspense>
-    </Provider>
-  </StrictMode>,
+  <Provider value={client}>
+    <Suspense fallback={<Skeleton className="w-full h-full" />}>
+      <App />
+    </Suspense>
+  </Provider>
 )

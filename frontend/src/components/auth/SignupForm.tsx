@@ -7,7 +7,7 @@ import { useClient } from 'urql'
 import { AnimatedErrorMessage } from "@/components/AnimatedErrorMessage"
 import { Form, FormField, FormLabel } from "@/components/ui/form"
 import { signupSchema } from "@/schema"
-import { FormError } from "@/types"
+import { handleFormErrors } from "@/utils/handleFormErrors"
 import { Input } from "@/components/ui/input"
 import useMainStore from "@/store"
 
@@ -25,16 +25,14 @@ const SignUpForm = () => {
         },
     })
 
-    type FormFields = "name" | "email" | "password" | "companyName" | "root"
+    const formFields = ["name", "email", "password", "companyName"] as const
 
     const onSubmit = async (data: z.infer<typeof signupSchema>) => {
         const formErrors = await signup(client, data)
-        if (formErrors.length > 0) {
-            formErrors.forEach((error: FormError) => {
-                form.setError(error.field as FormFields, { type: 'custom', message: error.message })
-            })
-        } else {
+        if (formErrors.length === 0) {
             navigate("/");
+        } else {
+            handleFormErrors(formErrors, form, formFields)
         }
     };
 
