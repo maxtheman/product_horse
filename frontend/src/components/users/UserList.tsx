@@ -37,6 +37,16 @@ const UserList = () => {
       <Skeleton className="w-full h-10" />
     </div>
   );
+  // if (!users.loaded && !users.errors && users.users.length === 0 && !shouldRefetchUsers) return (
+  //   <div className="space-y-2">
+  //     <div className="flex items-center justify-between mb-6">
+  //       <h1 className="text-3xl font-bold tracking-tight">Contacts</h1>
+  //       <h2 className="text-lg text-muted-foreground">Expecting to see contacts here? Click the button below to refresh the list.</h2>
+  //       <Button onClick={fetchUsers}>Fetch Users</Button>
+  //       <p className="text-sm text-muted-foreground">Let Max know you saw this message.</p>
+  //     </div>
+  //   </div>
+  // );
   if (users.errors) return <AnimatedErrorMessage message={users.errors.join(", ")} />
 
   return (

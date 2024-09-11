@@ -1,35 +1,37 @@
-import { GET_UTTERANCES_QUERY, GET_TRANSCRIPT_QUERY, CREATE_VIDEO_MUTATION, GET_ALL_VIDEOS_QUERY, GET_VIDEO_QUERY } from "./graphql";
-import { useMutation, useQuery } from 'urql';
+import { GET_VIDEO_QUERY } from "./graphql";
+import { useQuery } from 'urql';
 import { useEffect, useState, lazy, Suspense } from "react";
-import { z } from "zod"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { useForm, Controller } from "react-hook-form"
+import React from "react";
+import { cn } from "@/lib/utils";
 import {
-  Search,
-  CircleDot,
-  PlusCircle,
-  Eye,
   ArrowLeft,
   Play,
   Pause,
-  RotateCcw,
   Volume2,
   VolumeX,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Toaster } from "@/components/ui/sonner"
-import { toast } from "sonner"
-import { Form, FormField, FormItem, FormLabel, FormControl } from "@/components/ui/form"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card"
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card"
 import { Slider } from "@/components/ui/slider"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useLocation, Router, Switch, Route } from "wouter"
-import { PulsingButton } from "@/components/PulsingButton";
 import { AnimatedErrorMessage } from "@/components/AnimatedErrorMessage";
-import { EmptyState } from "@/components/EmptyState";
+// import {
+//   Search,
+//   PlusCircle,
+// } from "lucide-react"
+// import { z } from "zod"
+// import { useMutation } from 'urql';
+// import { GET_UTTERANCES_QUERY, GET_TRANSCRIPT_QUERY, CREATE_VIDEO_MUTATION } from "./graphql"
+// import { toast } from "sonner"
+// import { Form, FormField, FormItem, FormLabel, FormControl } from "@/components/ui/form"
+// import { Checkbox } from "@/components/ui/checkbox"
+// import { Input } from "@/components/ui/input"
+// import { PulsingButton } from "@/components/PulsingButton";
+// import { EmptyState } from "@/components/EmptyState";
+// import { zodResolver } from "@hookform/resolvers/zod"
+// import { useForm, Controller } from "react-hook-form"
 import useMainStore from "@/store";
 const LoginForm = lazy(() => import("@/components/auth/LoginForm"));
 const SignUpForm = lazy(() => import("@/components/auth/SignupForm"));
@@ -38,8 +40,9 @@ const Logout = lazy(() => import("@/components/auth/Logout"));
 const UserList = lazy(() => import("@/components/users/UserList"));
 const VideoJS = lazy(() => import("@/components/VideoJS"));
 const SaveFilesForm = lazy(() => import("@/components/SaveFilesForm"));
-// const VideoEditor = lazy(() => import("@/components/video-editor"));
+const VideoEditor = lazy(() => import("@/components/video-editor"));
 const Navigation = lazy(() => import("@/components/Navigation"));
+const VideoList = lazy(() => import("@/components/video/VideoList"));
 import type Player from 'video.js/dist/types/player';
 
 // TODOS:
@@ -50,318 +53,234 @@ import type Player from 'video.js/dist/types/player';
 
 // GET UTTERANCES
 
-const utterancesSchema = z.object({
-  question: z.string().min(1),
-  transcriptIds: z.array(z.string()).nonempty()
-})
+// const utterancesSchema = z.object({
+//   question: z.string().min(1),
+//   transcriptIds: z.array(z.string()).nonempty()
+// })
 
 
-interface Utterance {
-  id: string;
-  text: string;
-  words: { id: string }[];
-}
+// interface Utterance {
+//   id: string;
+//   text: string;
+//   words: { id: string }[];
+// }
 
-const GetUtterancesForm = () => {
-  const [queryVariables, setQueryVariables] = useState<z.infer<typeof utterancesSchema> | null>(null)
-  const [transcriptsResult] = useQuery({ query: GET_TRANSCRIPT_QUERY })
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [selectedUtterances, setSelectedUtterances] = useState<Set<string>>(new Set());
-  const [utterancesResult] = useQuery({
-    query: GET_UTTERANCES_QUERY,
-    variables: queryVariables ?? {},
-    pause: !queryVariables
-  })
-  const [, createVideo] = useMutation(CREATE_VIDEO_MUTATION);
-  const [videoCreated, setVideoCreated] = useState(false);
-  const [, navigate] = useLocation();
+// const GetUtterancesForm = () => {
+//   const [queryVariables, setQueryVariables] = useState<z.infer<typeof utterancesSchema> | null>(null)
+//   const [transcriptsResult] = useQuery({ query: GET_TRANSCRIPT_QUERY })
+//   const [isSubmitting, setIsSubmitting] = useState(false)
+//   const [selectedUtterances, setSelectedUtterances] = useState<Set<string>>(new Set());
+//   const [utterancesResult] = useQuery({
+//     query: GET_UTTERANCES_QUERY,
+//     variables: queryVariables ?? {},
+//     pause: !queryVariables
+//   })
+//   const [, createVideo] = useMutation(CREATE_VIDEO_MUTATION);
+//   const [videoCreated, setVideoCreated] = useState(false);
+//   const [, navigate] = useLocation();
 
-  const form = useForm<z.infer<typeof utterancesSchema>>({
-    resolver: zodResolver(utterancesSchema),
-    defaultValues: { question: "", transcriptIds: [] }
-  })
+//   const form = useForm<z.infer<typeof utterancesSchema>>({
+//     resolver: zodResolver(utterancesSchema),
+//     defaultValues: { question: "", transcriptIds: [] }
+//   })
 
-  const onSubmit = async (data: z.infer<typeof utterancesSchema>) => {
-    setIsSubmitting(true);
-    setQueryVariables(data);
+//   const onSubmit = async (data: z.infer<typeof utterancesSchema>) => {
+//     setIsSubmitting(true);
+//     setQueryVariables(data);
 
-    if (utterancesResult.data) {
-      const utterances = utterancesResult.data.getRelevantUtterances;
-      const utteranceSegments = utterances
-        .filter((u: Utterance) => selectedUtterances.has(u.id))
-        .map((u: Utterance) => ({
-          utteranceId: u.id,
-          wordIds: u.words.map((w: { id: string }) => w.id)
-        }));
+//     if (utterancesResult.data) {
+//       const utterances = utterancesResult.data.getRelevantUtterances;
+//       const utteranceSegments = utterances
+//         .filter((u: Utterance) => selectedUtterances.has(u.id))
+//         .map((u: Utterance) => ({
+//           utteranceId: u.id,
+//           wordIds: u.words.map((w: { id: string }) => w.id)
+//         }));
 
-      if (utteranceSegments.length > 0) {
-        const result = await createVideo({
-          utteranceSegments,
-          title: data.question // Set the title to the query
-        });
+//       if (utteranceSegments.length > 0) {
+//         const result = await createVideo({
+//           utteranceSegments,
+//           title: data.question // Set the title to the query
+//         });
 
-        if (result.data) {
-          setVideoCreated(true);
-          form.reset();
-          toast("Video job created successfully", {
-            description: "Your video is being processed. Check the video list for updates.",
-            action: {
-              label: "View Videos",
-              onClick: () => navigate("/videos"),
-            },
-            duration: 5000
-          });
-          navigate("/videos");
-        }
-        if (result.error) {
-          form.setError("root", { type: 'custom', message: result.error.graphQLErrors[0].message });
-        }
-      } else {
-        form.setError("root", { type: 'custom', message: "Please select at least one utterance" });
-      }
-    }
+//         if (result.data) {
+//           setVideoCreated(true);
+//           form.reset();
+//           toast("Video job created successfully", {
+//             description: "Your video is being processed. Check the video list for updates.",
+//             action: {
+//               label: "View Videos",
+//               onClick: () => navigate("/videos"),
+//             },
+//             duration: 5000
+//           });
+//           navigate("/videos");
+//         }
+//         if (result.error) {
+//           form.setError("root", { type: 'custom', message: result.error.graphQLErrors[0].message });
+//         }
+//       } else {
+//         form.setError("root", { type: 'custom', message: "Please select at least one utterance" });
+//       }
+//     }
 
-    setIsSubmitting(false);
-  }
+//     setIsSubmitting(false);
+//   }
 
-  const toggleUtterance = (id: string) => {
-    setSelectedUtterances(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(id)) {
-        newSet.delete(id);
-      } else {
-        newSet.add(id);
-      }
-      return newSet;
-    });
-  }
+//   const toggleUtterance = (id: string) => {
+//     setSelectedUtterances(prev => {
+//       const newSet = new Set(prev);
+//       if (newSet.has(id)) {
+//         newSet.delete(id);
+//       } else {
+//         newSet.add(id);
+//       }
+//       return newSet;
+//     });
+//   }
 
-  const transcripts = transcriptsResult.data?.getTranscripts || []
-  const allTranscriptIds = transcripts.map((t: { id: string }) => t.id)
+//   const transcripts = transcriptsResult.data?.getTranscripts || []
+//   const allTranscriptIds = transcripts.map((t: { id: string }) => t.id)
   
-  if (transcriptsResult.fetching) {
-    return (
-      <div className="container py-10 mx-auto space-y-4">
-        <Skeleton className="w-full h-10" />
-        <Skeleton className="w-full h-40" />
-        <Skeleton className="w-full h-10" />
-      </div>
-    );
-  }
+//   if (transcriptsResult.fetching) {
+//     return (
+//       <div className="container py-10 mx-auto space-y-4">
+//         <Skeleton className="w-full h-10" />
+//         <Skeleton className="w-full h-40" />
+//         <Skeleton className="w-full h-10" />
+//       </div>
+//     );
+//   }
 
-  return (
-    <div className="container py-10 mx-auto">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-3xl font-bold tracking-tight">Search for Clips</h1>
-        <Button onClick={() => navigate("/")}>
-          <PlusCircle className="w-4 h-4 mr-2" />
-          Upload Research
-        </Button>
-      </div>
-      {transcripts.length === 0 ? (
-        <EmptyState
-          showAddUser={false}
-          showUploadResearch={true}
-          showAskQuestion={false}
-        />
-      ) : (
-        <Card className="w-full">
-          <CardHeader>
-            <CardTitle>Ask a Question</CardTitle>
-            <CardDescription>Find relevant clips from your transcripts and create videos.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                <AnimatedErrorMessage message={form.formState.errors.root?.message} />
-                <FormField
-                  control={form.control}
-                  name="question"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Question</FormLabel>
-                      <FormControl>
-                        <Input {...field} placeholder="Enter your question here" />
-                      </FormControl>
-                      <AnimatedErrorMessage message={form.formState.errors.question?.message} />
-                    </FormItem>
-                  )}
-                />
-                <FormItem>
-                  <FormLabel>Transcripts</FormLabel>
-                  <FormControl>
-                    <div className="p-2 space-y-2 overflow-y-auto border rounded-md max-h-60">
-                      <div className="flex items-center space-x-2">
-                        <Checkbox
-                          checked={form.watch('transcriptIds').length === allTranscriptIds.length}
-                          onCheckedChange={(checked) => {
-                            form.setValue('transcriptIds', checked ? allTranscriptIds : [])
-                          }}
-                        />
-                        <span>Select All</span>
-                      </div>
-                      {transcripts.map((transcript: { id: string, fileMetadata: { fileName: string } }) => (
-                        <div key={transcript.id} className="flex items-center space-x-2">
-                          <Controller
-                            name="transcriptIds"
-                            control={form.control}
-                            render={({ field }) => (
-                              <Checkbox
-                                checked={field.value.includes(transcript.id)}
-                                onCheckedChange={(checked) => {
-                                  const updatedIds = checked
-                                    ? [transcript.id, ...field.value]
-                                    : field.value.filter((id: string) => id !== transcript.id)
-                                  field.onChange(updatedIds)
-                                }}
-                              />
-                            )}
-                          />
-                          <span>{transcript.fileMetadata.fileName ?? "No name provided"}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </FormControl>
-                  <AnimatedErrorMessage message={form.formState.errors.transcriptIds?.message} />
-                </FormItem>
-                <PulsingButton
-                  type="submit"
-                  className="w-full"
-                  isSubmitting={isSubmitting || utterancesResult.fetching}
-                >
-                  {utterancesResult.fetching ? <>
-                    Loading Utterances
-                  </> : isSubmitting ? "Working" : <>
-                    <Search className="w-4 h-4 mr-2" />
-                    Get Utterances
-                  </>}
-                </PulsingButton>
-              </form>
-            </Form>
+//   return (
+//     <div className="container py-10 mx-auto">
+//       <div className="flex items-center justify-between mb-6">
+//         <h1 className="text-3xl font-bold tracking-tight">Search for Clips</h1>
+//         <Button onClick={() => navigate("/")}>
+//           <PlusCircle className="w-4 h-4 mr-2" />
+//           Upload Research
+//         </Button>
+//       </div>
+//       {transcripts.length === 0 ? (
+//         <EmptyState
+//           showAddUser={false}
+//           showUploadResearch={true}
+//           showAskQuestion={false}
+//         />
+//       ) : (
+//         <Card className="w-full">
+//           <CardHeader>
+//             <CardTitle>Ask a Question</CardTitle>
+//             <CardDescription>Find relevant clips from your transcripts and create videos.</CardDescription>
+//           </CardHeader>
+//           <CardContent>
+//             <Form {...form}>
+//               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+//                 <AnimatedErrorMessage message={form.formState.errors.root?.message} />
+//                 <FormField
+//                   control={form.control}
+//                   name="question"
+//                   render={({ field }) => (
+//                     <FormItem>
+//                       <FormLabel>Question</FormLabel>
+//                       <FormControl>
+//                         <Input {...field} placeholder="Enter your question here" />
+//                       </FormControl>
+//                       <AnimatedErrorMessage message={form.formState.errors.question?.message} />
+//                     </FormItem>
+//                   )}
+//                 />
+//                 <FormItem>
+//                   <FormLabel>Transcripts</FormLabel>
+//                   <FormControl>
+//                     <div className="p-2 space-y-2 overflow-y-auto border rounded-md max-h-60">
+//                       <div className="flex items-center space-x-2">
+//                         <Checkbox
+//                           checked={form.watch('transcriptIds').length === allTranscriptIds.length}
+//                           onCheckedChange={(checked) => {
+//                             form.setValue('transcriptIds', checked ? allTranscriptIds : [])
+//                           }}
+//                         />
+//                         <span>Select All</span>
+//                       </div>
+//                       {transcripts.map((transcript: { id: string, fileMetadata: { fileName: string } }) => (
+//                         <div key={transcript.id} className="flex items-center space-x-2">
+//                           <Controller
+//                             name="transcriptIds"
+//                             control={form.control}
+//                             render={({ field }) => (
+//                               <Checkbox
+//                                 checked={field.value.includes(transcript.id)}
+//                                 onCheckedChange={(checked) => {
+//                                   const updatedIds = checked
+//                                     ? [transcript.id, ...field.value]
+//                                     : field.value.filter((id: string) => id !== transcript.id)
+//                                   field.onChange(updatedIds)
+//                                 }}
+//                               />
+//                             )}
+//                           />
+//                           <span>{transcript.fileMetadata.fileName ?? "No name provided"}</span>
+//                         </div>
+//                       ))}
+//                     </div>
+//                   </FormControl>
+//                   <AnimatedErrorMessage message={form.formState.errors.transcriptIds?.message} />
+//                 </FormItem>
+//                 <PulsingButton
+//                   type="submit"
+//                   className="w-full"
+//                   isSubmitting={isSubmitting || utterancesResult.fetching}
+//                 >
+//                   {utterancesResult.fetching ? <>
+//                     Loading Utterances
+//                   </> : isSubmitting ? "Working" : <>
+//                     <Search className="w-4 h-4 mr-2" />
+//                     Get Utterances
+//                   </>}
+//                 </PulsingButton>
+//               </form>
+//             </Form>
 
-            {utterancesResult.data && (
-              <div className="mt-8">
-                <h2 className="mb-4 text-xl font-semibold">Results:</h2>
-                {utterancesResult.data.getRelevantUtterances.length === 0 ? (
-                  <p>No relevant utterances found. Try refining your question.</p>
-                ) : (
-                  <>
-                    {utterancesResult.data.getRelevantUtterances.map((utterance: Utterance) => (
-                      <div key={utterance.id} className="flex items-center mt-2 space-x-2">
-                        <Checkbox
-                          checked={selectedUtterances.has(utterance.id)}
-                          onCheckedChange={() => toggleUtterance(utterance.id)}
-                        />
-                        <span>{utterance.text}</span>
-                      </div>
-                    ))}
-                    <Button
-                      onClick={form.handleSubmit(onSubmit)}
-                      disabled={isSubmitting || selectedUtterances.size === 0}
-                      className="w-full mt-4"
-                    >
-                      {isSubmitting
-                        ? "Creating Video"
-                        : selectedUtterances.size === 0
-                          ? "Select Clips to Create a Video"
-                          : "Create Video from Selected Clips"}
-                    </Button>
-                  </>
-                )}
-              </div>
-            )}
-            {videoCreated && <p className="mt-4 text-green-500">Video job created successfully! Check the video list for updates.</p>}
-            {utterancesResult.error && <p className="mt-4 text-red-500">{utterancesResult.error.graphQLErrors[0].message}</p>}
-          </CardContent>
-        </Card>
-      )}
-    </div>
-  )
-}
-
-// CREATE AND GET VIDEO
-const VideoList = () => {
-
-  const [result, refetch] = useQuery({ query: GET_ALL_VIDEOS_QUERY });
-  const [, navigate] = useLocation();
-
-  if (result.fetching) return (
-    <div className="space-y-2">
-      <Skeleton className="w-full h-10" />
-      <Skeleton className="w-full h-10" />
-      <Skeleton className="w-full h-10" />
-    </div>
-  );
-  if (result.error) return <AnimatedErrorMessage message={result.error.message} />
-  if (!result.data || !result.data.getAllVideos || result.data.getAllVideos.length === 0) {
-    return (
-      <div className="container py-10 mx-auto">
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-3xl font-bold tracking-tight">Videos</h1>
-          <Button onClick={() => navigate("/clips")}>
-            <PlusCircle className="w-4 h-4 mr-2" />
-            Create Video
-          </Button>
-        </div>
-        <EmptyState showAddUser={false} showUploadResearch={false} showAskQuestion={true} />
-      </div>
-    );
-  }
-
-  return (
-    <div className="container py-10 mx-auto">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-3xl font-bold tracking-tight">Videos</h1>
-        <Button onClick={() => navigate("/clips")}>
-          <PlusCircle className="w-4 h-4 mr-2" />
-          Create Video
-        </Button>
-      </div>
-      <Card>
-        <CardHeader>
-          <CardTitle>Video List</CardTitle>
-          <CardDescription>View and manage all your created videos. <br />
-            <span className="text-xs">If you don't see your video here, it may still be early in the processing pipeline.</span>
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-[50%]">Title</TableHead>
-                <TableHead>Render Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {result.data.getAllVideos.map((video: { id: string; title: string; renderStatus: string }) => (
-                <TableRow key={video.id}>
-                  <TableCell className="font-medium">{video.title}</TableCell>
-                  <TableCell>
-                    <CircleDot className={`h-4 w-4 inline-block mr-2 ${video.renderStatus === 'complete' ? 'text-green-500' : 'text-yellow-500'}`} />
-                    {video.renderStatus}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button variant="ghost" onClick={() => navigate(`/videos/${video.id}`)}>
-                      <Eye className="w-4 h-4 mr-2" />
-                      View
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-        <CardFooter>
-          <Button onClick={() => refetch({ requestPolicy: 'network-only' })}>
-            <RotateCcw className="w-4 h-4 mr-2" />
-            Refresh
-          </Button>
-        </CardFooter>
-      </Card>
-    </div>
-  );
-};
+//             {utterancesResult.data && (
+//               <div className="mt-8">
+//                 <h2 className="mb-4 text-xl font-semibold">Results:</h2>
+//                 {utterancesResult.data.getRelevantUtterances.length === 0 ? (
+//                   <p>No relevant utterances found. Try refining your question.</p>
+//                 ) : (
+//                   <>
+//                     {utterancesResult.data.getRelevantUtterances.map((utterance: Utterance) => (
+//                       <div key={utterance.id} className="flex items-center mt-2 space-x-2">
+//                         <Checkbox
+//                           checked={selectedUtterances.has(utterance.id)}
+//                           onCheckedChange={() => toggleUtterance(utterance.id)}
+//                         />
+//                         <span>{utterance.text}</span>
+//                       </div>
+//                     ))}
+//                     <Button
+//                       onClick={form.handleSubmit(onSubmit)}
+//                       disabled={isSubmitting || selectedUtterances.size === 0}
+//                       className="w-full mt-4"
+//                     >
+//                       {isSubmitting
+//                         ? "Creating Video"
+//                         : selectedUtterances.size === 0
+//                           ? "Select Clips to Create a Video"
+//                           : "Create Video from Selected Clips"}
+//                     </Button>
+//                   </>
+//                 )}
+//               </div>
+//             )}
+//             {videoCreated && <p className="mt-4 text-green-500">Video job created successfully! Check the video list for updates.</p>}
+//             {utterancesResult.error && <p className="mt-4 text-red-500">{utterancesResult.error.graphQLErrors[0].message}</p>}
+//           </CardContent>
+//         </Card>
+//       )}
+//     </div>
+//   )
+// }
 
 const VideoPlayer = ({ id }: { id: string }) => {
   const [result, reexecuteQuery] = useQuery({
@@ -564,9 +483,9 @@ const AppRouter = ({ token }: { token: string }) => {
             <NewUserForm />
           </ProtectedRoute>
         </Route>
-        <Route path="/clips">
+        <Route path="/new-video">
           <ProtectedRoute>
-            <GetUtterancesForm />
+            <VideoEditor />
           </ProtectedRoute>
         </Route>
         <Route path="/videos">
@@ -594,17 +513,19 @@ const AppRouter = ({ token }: { token: string }) => {
 function App() {
   const token = useMainStore((state) => state.authToken);
 
-
   return (
     <Router>
       <div className="flex h-screen">
         {token && <Navigation />}
-        <div className="flex-1 p-4 overflow-auto bg-gray-50">
-          <AppRouter token={token || ""} />
+        <div className="flex items-center justify-center flex-1 overflow-hidden">
+          <div className="overflow-auto bg-gray-50">
+            <AppRouter token={token || ""} />
+          </div>
         </div>
         <Toaster />
       </div>
     </Router>
   );
 }
+
 export default App;

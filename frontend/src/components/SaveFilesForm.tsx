@@ -276,7 +276,7 @@ const SaveFilesForm = ({ userId }: { userId: string }) => {
                 description: `${savedFiles.length} file(s) processed. Ready to create videos.`,
                 action: {
                     label: "Create Video",
-                    onClick: () => navigate(`/clips`),
+                    onClick: () => navigate("/new-video"),
                 },
             });
         } catch (error) {

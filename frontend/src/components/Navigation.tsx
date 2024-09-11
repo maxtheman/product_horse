@@ -1,5 +1,6 @@
-import { LucideIcon, Users, UserPlus, Search, Video, LogOut, ArrowRight } from "lucide-react";
-import React, { useMemo } from "react";
+import React from "react";
+import { LucideIcon, Users, Library, Film, LogOut, ArrowRight } from "lucide-react";
+import { useMemo } from "react";
 import { useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 import {
@@ -18,9 +19,9 @@ interface Route {
 
 const routes: Route[] = [
     { path: "/", label: "Contacts", icon: Users },
-    { path: "/new-user", label: "New Contact", icon: UserPlus },
-    { path: "/clips", label: "Search for Clips", icon: Search },
-    { path: "/videos", label: "Videos", icon: Video },
+    // { path: "/new-user", label: "New Contact", icon: UserPlus },
+    { path: "/new-video", label: "New Video", icon: Film },
+    { path: "/videos", label: "Videos", icon: Library },
     { path: "/logout", label: "Logout", icon: LogOut },
 ];
 
@@ -95,5 +96,7 @@ const Navigation = React.memo(() => {
         </NavigationMenu>
     );
 });
+
+Navigation.displayName = 'Navigation';
 
 export default Navigation;

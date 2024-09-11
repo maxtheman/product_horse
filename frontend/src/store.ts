@@ -7,6 +7,7 @@ import {
     SAVE_USER_MUTATION
 } from "./graphql";
 import { SignupFormData, LoginFormData, FormError } from "./types";
+import { StateCreator } from 'zustand';
 
 interface User {
     id: string;
@@ -24,7 +25,33 @@ interface UserFormData {
     externalId: string | null;
 }
 
-interface MainStore {
+function handleForm<T>(result: OperationResult<T, object>, callback: (data: T) => void): FormError[] {
+    let formErrors: FormError[] = []
+    if (result.data) {
+        callback(result.data)
+        return formErrors
+    }
+    if (result.error) {
+        console.log('graphql error', result.error)
+        try {
+            if (result.error.graphQLErrors.length > 0) {
+                formErrors = result.error.graphQLErrors.map((error) => ({ field: error.path?.[0].toString() || 'root', type: 'custom', message: error.message }));
+                return formErrors
+            } else {
+                console.log('No graphql error', result.error)
+                formErrors = [{ field: 'root', type: 'custom', message: `An error occurred ${result.error}` }]
+                return formErrors
+            }
+        } catch {
+            console.log('No graphql error', result.error)
+            formErrors = [{ field: 'root', type: 'custom', message: `An error occurred` }]
+            return formErrors
+        }
+    }
+    return formErrors
+}
+
+export interface AuthSlice {
     authToken: string | null;
     isSubmittingForm: boolean;
     setAuthToken: (token: string) => void;
@@ -32,6 +59,47 @@ interface MainStore {
     removeAuthToken: () => void;
     signup: (client: Client, data: SignupFormData) => Promise<FormError[]>;
     login: (client: Client, data: LoginFormData) => Promise<FormError[]>;
+}
+
+export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set, get) => ({
+    authToken: null,
+    isSubmittingForm: false,
+    getAuthToken: () => {
+        const token = document.cookie.split('; ').find(row => row.startsWith('jwt='))?.split('=')[1];
+        set({ authToken: token || null });
+        return token || null;
+    },
+    setAuthToken: (token: string) => {
+        document.cookie = `jwt=${token}; max-age=86400; domain=${window.location.hostname}; path=/; SameSite=Strict; Secure`;
+        set({ authToken: token });
+    },
+    removeAuthToken: () => {
+        document.cookie = `jwt=; max-age=0; domain=${window.location.hostname}; path=/; SameSite=Strict; Secure`;
+        set({ authToken: null });
+    },
+    signup: async (client: Client, data: SignupFormData) => {
+        set({ isSubmittingForm: true });
+        const result = await client.mutation(REGISTER_MUTATION, data).toPromise();
+        const formErrors = handleForm(result, (data) => {
+            const token = data.registerCompanyAndEmployee.token;
+            get().setAuthToken(token);
+        });
+        set({ isSubmittingForm: false });
+        return formErrors;
+    },
+    login: async (client: Client, data: LoginFormData) => {
+        set({ isSubmittingForm: true });
+        const result = await client.mutation(LOGIN_MUTATION, data).toPromise();
+        const formErrors = handleForm(result, (data) => {
+            const token = data.login.token || data.LoginSuccess.token;
+            get().setAuthToken(token);
+        });
+        set({ isSubmittingForm: false });
+        return formErrors;
+    },
+});
+
+interface MainStore {
     users: Users;
     activeItemName: string;
     setActiveItemName: (name: string) => void;
@@ -41,65 +109,15 @@ interface MainStore {
     setNavExpanded: (expanded: boolean) => void;
     shouldRefetchUsers: boolean;
     setShouldRefetchUsers: (value: boolean) => void;
+    shouldRefetchVideos: boolean;
+    setShouldRefetchVideos: (value: boolean) => void;
 }
 
-function handleForm<T>(result: OperationResult<T, object>, callback: (data: T) => void): FormError[] {
-    let formErrors: FormError[] = []
-    if (result.data) {
-        callback(result.data)
-        return formErrors
-    }
-    if (result.error) {
-        try {
-            console.log(result.error.graphQLErrors)
-            formErrors = result.error.graphQLErrors.map((error) => ({ field: error.path?.[0].toString() || 'root', type: 'custom', message: error.message }));
-            return formErrors
-        } catch {
-            formErrors = [{ field: 'root', type: 'custom', message: "An error occurred" }]
-            return formErrors
-        }
-    }
-    return formErrors
-}
-
-const useMainStore = create<MainStore>((set, get) => ({
-    getAuthToken: () => {
-        const token = document.cookie.split('; ').find(row => row.startsWith('jwt='))?.split('=')[1];
-        set({ authToken: token || '' });
-        return token || null;
-    },
-    authToken: null,
+const useMainStore = create<MainStore & AuthSlice>()((set, get, ...args) => ({
+    ...createAuthSlice(set, get, ...args),
     isSubmittingForm: false,
-    setAuthToken: (token: string) => {
-        document.cookie = `jwt=${token}; max-age=86400; domain=${window.location.hostname}; path=/; SameSite=Strict; Secure`;
-        set({ authToken: token });
-    },
-    removeAuthToken: () => {
-        document.cookie = `jwt=; max-age=0; domain=${window.location.hostname}; path=/; SameSite=Strict; Secure`;
-        set({ authToken: '' });
-    },
-    signup: async (client: Client, data: SignupFormData) => {
-        set({ isSubmittingForm: true });
-        const result = await client.mutation(REGISTER_MUTATION, data).toPromise();
-        const formErrors = handleForm(result, (data) => {
-            get().setAuthToken(data.registerCompanyAndEmployee.token)
-        })
-        set({ isSubmittingForm: false });
-        return formErrors
-    },
-    login: async (client: Client, data: LoginFormData) => {
-        set({ isSubmittingForm: true });
-        const result = await client.mutation(LOGIN_MUTATION, data).toPromise();
-        const formErrors = handleForm(result, (data) => {
-            const token = data.login.token || data.LoginSuccess.token
-            get().setAuthToken(token)
-        })
-        set({ isSubmittingForm: false });
-        if (formErrors.length === 0) {
-            get().getUsers(client).catch(console.error);
-        }
-        return formErrors
-    },
+    shouldRefetchVideos: true,
+    setShouldRefetchVideos: (value: boolean) => set({ shouldRefetchVideos: value }),
     users: {
         loaded: false,
         users: [],
@@ -113,11 +131,13 @@ const useMainStore = create<MainStore>((set, get) => ({
         set({ users: { loaded: false, users: [], errors: null } });
         const result = await client.query(GET_USERS_QUERY, {}).toPromise();
         console.log(result) // might be a more efficient way to do this, check the result for more attributes
-        set({ users: {
-            loaded: true,
-            users: result?.data?.getUsers || [],
-            errors: result?.error?.graphQLErrors.map((error) => error.message) || null
-        }, shouldRefetchUsers: false});
+        set({
+            users: {
+                loaded: true,
+                users: result?.data?.getUsers || [],
+                errors: result?.error?.graphQLErrors.map((error) => error.message) || null
+            }, shouldRefetchUsers: false
+        });
     },
     addUser: async (client: Client, data: UserFormData) => {
         set({ isSubmittingForm: true });
@@ -125,8 +145,8 @@ const useMainStore = create<MainStore>((set, get) => ({
         const formErrors = handleForm(result, async () => {
             set((state) => ({
                 users: {
-                  ...state.users,
-                  users: [...state.users.users, result?.data?.saveUser]
+                    ...state.users,
+                    users: [...state.users.users, result?.data?.saveUser]
                 },
                 shouldRefetchUsers: true
             }));
@@ -136,7 +156,7 @@ const useMainStore = create<MainStore>((set, get) => ({
     },
     navExpanded: false,
     setNavExpanded: (expanded) => set({ navExpanded: expanded }),
-    shouldRefetchUsers: false,
+    shouldRefetchUsers: true,
     setShouldRefetchUsers: (value: boolean) => set({ shouldRefetchUsers: value }),
 }));
 

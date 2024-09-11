@@ -17,7 +17,7 @@ echo "Current user: $(whoami)"
 
 # Mount the S3 bucket
 echo "Attempting to mount S3 bucket..."
-dotenvx run -f .env.production -- s3fs ph-storage /storage -o passwd_file=${HOME}/.passwd-s3fs -o url=https://db59eb944db359472048f5e9a5dbc7d7.r2.cloudflarestorage.com/ -o nomixupload -o endpoint=auto
+dotenvx run -f .env.production -- s3fs product-horse-storage /storage -o passwd_file=${HOME}/.passwd-s3fs -o url=https://fly.storage.tigris.dev -o nomixupload -o endpoint=auto
 
 # uncheck if you end up with race condition
 # sleep 2

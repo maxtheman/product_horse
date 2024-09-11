@@ -177,15 +177,13 @@ async def create_video(request: CreateVideoRequest, authorization: str = Header(
         # Extract employee_id from the decoded JWT
         employee_id = payload["id"]
 
-        video = await cast(Video, run_remote_create_video(
-                video_id=request.video_id,
-                utterance_segments_inputs=request.utterance_segments_inputs,
-                employee_id=employee_id,
-                jwt=token,
-                title=request.title,
-                size=request.size,
-                    force_size=request.force_size,
-            )
+        video = await run_remote_create_video(
+            video_id=request.video_id,
+            utterance_segments_inputs=request.utterance_segments_inputs,
+            employee_id=employee_id,
+            title=request.title,
+            size=request.size,
+            force_size=request.force_size,
         )
         return video
     except InvalidTokenError:

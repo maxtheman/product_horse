@@ -1,10 +1,11 @@
+import React from "react"
 import { useCallback, useState, useEffect } from "react"
 import { useLocation } from "wouter"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import useMainStore from "@/store"
 
-const Logout = () => {
+const Logout: React.FC = () => {
     const setToken = useMainStore((state) => state.setAuthToken);
     const [, navigate] = useLocation();
     const [showConfirmation, setShowConfirmation] = useState(true);
@@ -22,7 +23,7 @@ const Logout = () => {
 
     if (showConfirmation) {
         return (
-            <Card className="w-full max-w-md mx-auto mt-8">
+            <Card className="max-w-md mx-auto mt-8 w-dvw h-dvh">
                 <CardHeader>
                     <CardTitle>Confirm Logout</CardTitle>
                     <CardDescription>Are you sure you want to log out?</CardDescription>

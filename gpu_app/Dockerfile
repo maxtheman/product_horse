@@ -137,6 +137,7 @@ RUN ffmpeg -encoders | grep -q h264_nvenc || (echo "h264_nvenc codec not found" 
 # /Users/max/Documents/product_horse/gpu_app/product_horse-0.1.0-py3-none-any.whl
 COPY gpu_app/product_horse-0.1.0-py3-none-any.whl ./
 COPY gpu_app/product_horse-0.1.0.tar.gz ./
+COPY frontend/dist ./frontend/dist
 
 # Install the wheel file and the local dependency
 RUN pip3 install --upgrade pip && \

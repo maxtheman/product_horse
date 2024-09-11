@@ -1,3 +1,4 @@
+import React from "react";
 import { useLocation, Link } from "wouter"
 import { useForm } from "react-hook-form"
 import { z } from "zod"
@@ -37,7 +38,7 @@ const SignUpForm = () => {
     };
 
     return (
-        <div className="flex items-center justify-center min-h-screen bg-gray-100">
+        <div className="flex items-center justify-center w-screen min-h-screen bg-gray-100">
             <div className="w-full max-w-md p-8 space-y-6 bg-white rounded-lg shadow-md">
                 <h2 className="text-2xl font-bold text-center">Sign Up</h2>
                 <Form {...form}>
