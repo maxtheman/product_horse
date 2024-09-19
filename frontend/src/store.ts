@@ -1,4 +1,4 @@
-import { create } from "zustand";
+import { create, StateCreator } from "zustand";
 import { Client, OperationResult } from "urql";
 import {
     REGISTER_MUTATION,
@@ -7,7 +7,6 @@ import {
     SAVE_USER_MUTATION
 } from "./graphql";
 import { SignupFormData, LoginFormData, FormError } from "./types";
-import { StateCreator } from 'zustand';
 
 interface User {
     id: string;

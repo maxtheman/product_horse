@@ -115,7 +115,7 @@ config = Config(
 s3_client = boto3.client("s3", config=config)
 
 MB_100 = 100 * 1024 * 1024
-PART_SIZE = 5 * 1024 * 1024  # 5MB part size
+PART_SIZE = 7 * 1024 * 1024  # 6MB part size
 
 
 class JwtPayload(TypedDict):
