@@ -518,7 +518,7 @@ function App() {
       <div className="flex h-screen">
         {token && <Navigation />}
         <div className="flex items-center justify-center flex-1 overflow-hidden">
-          <div className="overflow-auto bg-gray-50">
+          <div className="overflow-visible bg-gray-50">
             <AppRouter token={token || ""} />
           </div>
         </div>
