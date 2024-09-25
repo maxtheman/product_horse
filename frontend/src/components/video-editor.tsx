@@ -1,4 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  forwardRef,
+  useCallback,
+} from 'react'
 import {
   Search,
   SkipForward,
@@ -10,6 +16,8 @@ import {
   Trash2,
   RefreshCw,
   GripVertical,
+  Play,
+  Pause,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -105,7 +113,6 @@ const exampleClips: Clip[] = [
 function mockQuery(query: string): Promise<Clip[]> {
   return new Promise((resolve) => {
     setTimeout(() => {
-      console.log('mockQuery', query)
       resolve(exampleClips)
     }, 100)
   })
@@ -126,6 +133,10 @@ enum ZoneCurrent {
 }
 
 interface VideoEditorStore {
+  activeTab: string
+  setActiveTab: (tab: string) => void
+  isPlaying: boolean
+  setIsPlaying: (isPlaying: boolean) => void
   mousePosition: { x0: number; y0: number; x1: number; y1: number }
   allSpeakers: { name: string; color: string; clipIds: string[] }[]
   saveSpeaker: (clipId: string, speaker: string) => void
@@ -152,6 +163,7 @@ interface VideoEditorStore {
   getNewClips: (search: string) => Promise<void>
   setCurrentSearch: (search: string) => void
   videoTitle: string
+  setVideoTitle: (title: string) => void
   setClips: (clips: Clip[]) => void
   error: string | null
   setError: (error: string) => void
@@ -162,6 +174,7 @@ interface VideoEditorStore {
   refreshClipText: (clipId: string) => void
   setPreview: (clipId: string) => void
   wordIdAtCurrentSeek: string
+  updateSwapySlotList: (slotId: string, itemId: string | null) => void
   setWordIdAtCurrentSeek: (wordId: string) => void
   enableDropZones: boolean
   setEnableDropZones: (enable: boolean) => void
@@ -183,6 +196,10 @@ interface VideoEditorStore {
 }
 
 const useVideoEditorStore = create<VideoEditorStore>((set, get) => ({
+  activeTab: 'video',
+  setActiveTab: (tab: string) => set({ activeTab: tab }),
+  isPlaying: false,
+  setIsPlaying: (isPlaying: boolean) => set({ isPlaying: isPlaying }),
   mousePosition: { x0: 0, y0: 0, x1: 0, y1: 0 },
   allSpeakers: [],
   getSpeakerColor: (): string => {
@@ -250,8 +267,10 @@ const useVideoEditorStore = create<VideoEditorStore>((set, get) => ({
     set({ currentTimelineDuration: duration }),
   currentSeek: 0,
   clipWithSeek: (): { clipId: string; wordIndex: string } | null => {
-    const { clipsInTimeline, currentSeek } = useVideoEditorStore.getState()
-    for (const clip of clipsInTimeline()) {
+    const { currentSeek, clipsInTimeline } = get()
+    const currentClips = clipsInTimeline()
+    console.log('currentClips', currentClips)
+    for (const clip of currentClips) {
       for (const word of clip.words) {
         if (currentSeek >= word.start && currentSeek < word.end) {
           return { clipId: clip.id, wordIndex: word.id }
@@ -299,23 +318,33 @@ const useVideoEditorStore = create<VideoEditorStore>((set, get) => ({
   setEnableDropZones: (enable: boolean) => set({ enableDropZones: enable }),
   currentSearch: 'women_music',
   clipsInSearch: (): Clip[] => {
-    const { clips } = useVideoEditorStore.getState()
+    const { clips, currentSearch, clipsInTimeline, clipsWithPreview } = get()
     if (clips.length === 0) return []
-    const clipsInSearch = clips.filter((clip) => clip.fromSearch)
+    const clipsInSearch = clips
+      .filter((clip) => clip.fromSearch === currentSearch)
+      .filter(
+        (clip) =>
+          !clipsInTimeline().some((c) => c.id === clip.id) &&
+          !clipsWithPreview().some((c) => c.id === clip.id)
+      )
     return clipsInSearch
   },
   getNewClips: async (search: string) => {
     try {
       const newClips = await mockQuery(search)
-      const { clipsInTimeline, clipsWithPreview } = useVideoEditorStore.getState()
+      const { clipsInTimeline, clipsWithPreview } =
+        useVideoEditorStore.getState()
       const filteredClips = newClips.filter(
         (clip) =>
           !clipsInTimeline().some((c) => c.id === clip.id) &&
           !clipsWithPreview().some((c) => c.id === clip.id)
       )
-      const allClipsDeDuped = [...clipsInTimeline(), ...clipsWithPreview(), ...filteredClips]
+      const allClipsDeDuped = [
+        ...clipsInTimeline(),
+        ...clipsWithPreview(),
+        ...filteredClips,
+      ]
       set({ clips: allClipsDeDuped, currentSearch: search })
-      console.log('clipsInSearch', get().clipsInSearch())
     } catch (error) {
       console.error('Error fetching new clips', error)
       set({ error: 'Error fetching new clips' })
@@ -323,11 +352,12 @@ const useVideoEditorStore = create<VideoEditorStore>((set, get) => ({
   },
   setCurrentSearch: (search: string) => {
     set({ currentSearch: search })
-    get().getNewClips(search)    
+    get().getNewClips(search)
   },
   error: null,
   setError: (error: string) => set({ error }),
   videoTitle: 'Example Video',
+  setVideoTitle: (title: string) => set({ videoTitle: title }),
   setClips: (clips) => set({ clips }),
   highlightedWords: null,
   setHighlightedWords: (clipId: string, wordId: string) => {
@@ -383,38 +413,31 @@ const useVideoEditorStore = create<VideoEditorStore>((set, get) => ({
     set({ highlightedWords: null })
   },
   toggleClipFromTimeline: (clipId: string) => {
-    const { clips, currentSearch, setCurrentTimelineDuration, saveSpeaker } =
+    const { clips, setCurrentTimelineDuration, saveSpeaker } =
       useVideoEditorStore.getState()
     const clipToUpdateOrRemove = clips.find((clip) => clip.id === clipId)
     if (!clipToUpdateOrRemove) return
-    if (clipToUpdateOrRemove.fromSearch === currentSearch) {
-      const updatedClip = {
-        ...clipToUpdateOrRemove,
-        inTimeline: !clipToUpdateOrRemove.inTimeline,
-        preview: false, // turn off preview if it is on
-      }
-      const updatedClips = clips.map((clip) =>
-        clip.id === clipId ? updatedClip : clip
-      )
-      const speakers = updatedClips
-        .filter((clip) => clip.inTimeline)
-        .map((clip) => clip.speaker)
-      const uniqueSpeakers = [...new Set(speakers)]
-      for (const speaker of uniqueSpeakers) {
-        saveSpeaker(clipId, speaker)
-      }
-      console.log('updatedClips', updatedClips)
-      set({ clips: updatedClips })
-      // remove the clip from searchbin
-      const sumOfClipDurations = updatedClips
-        .filter((clip) => clip.inTimeline)
-        .reduce((sum, clip) => sum + clip.words[clip.words.length - 1].end, 0)
-      setCurrentTimelineDuration(sumOfClipDurations)
-    } else {
-      // if the clip is not from the current search, remove it from the clips array
-      const updatedClips = clips.filter((clip) => clip.id !== clipId)
-      set({ clips: updatedClips })
+    const updatedClip = {
+      ...clipToUpdateOrRemove,
+      inTimeline: !clipToUpdateOrRemove.inTimeline,
+      preview: false, // turn off preview if it is on
     }
+    const updatedClips = clips.map((clip) =>
+      clip.id === clipId ? updatedClip : clip
+    )
+    const speakers = updatedClips
+      .filter((clip) => clip.inTimeline)
+      .map((clip) => clip.speaker)
+    const uniqueSpeakers = [...new Set(speakers)]
+    for (const speaker of uniqueSpeakers) {
+      saveSpeaker(clipId, speaker)
+    }
+    set({ clips: updatedClips })
+    // remove the clip from searchbin
+    const sumOfClipDurations = updatedClips
+      .filter((clip) => clip.inTimeline)
+      .reduce((sum, clip) => sum + clip.words[clip.words.length - 1].end, 0)
+    setCurrentTimelineDuration(sumOfClipDurations)
   },
   refreshClipText: (clipId: string) => {
     const { clips } = useVideoEditorStore.getState()
@@ -451,6 +474,15 @@ const useVideoEditorStore = create<VideoEditorStore>((set, get) => ({
   setMostRecentSwapEvent: (event: {
     data: { array: { slotId: string; itemId: string | null }[] }
   }) => set({ mostRecentSwapEvent: event }),
+  updateSwapySlotList: (slotId: string, itemId: string | null) => {
+    const { swapyRef, mostRecentSwapEvent, setMostRecentSwapEvent} = useVideoEditorStore.getState()
+    const swapyDataToSet = mostRecentSwapEvent?.data.array || []
+    const mergedArray = [...swapyDataToSet, { 'slotId': slotId, 'itemId': itemId }]
+    setMostRecentSwapEvent({ data: { array: mergedArray } })
+    if (swapyRef) {
+      swapyRef.setData({ array: mergedArray })
+    }
+  },
   handleSwap: (event: {
     data: { array: { slotId: string; itemId: string | null }[] }
   }) => {
@@ -464,18 +496,29 @@ const useVideoEditorStore = create<VideoEditorStore>((set, get) => ({
       setPreview,
       setCurrentZone,
       swapyRef,
+      setMousePosition,
+      clipsInTimeline,
     } = useVideoEditorStore.getState()
     if (!useVideoEditorStore.getState().clipIsDragging) {
       const swapyData = event.data.array
       console.log('swapyData', swapyData)
+      console.log('currentZone', currentZone)
       if (currentZone == ZoneCurrent.TIMELINE_EXTEND) {
         console.log('timeline extend')
         const clipId = useVideoEditorStore.getState().clipDragged
+        const timelineSlots = [
+          'timeline-extend-start',
+          'timeline-extend-end',
+        ].concat(
+          clipsInTimeline().map((_, index) => `timeline-extend-${index}`)
+        )
+        console.log('timelineSlots', timelineSlots)
         const swapyDataToSet = swapyData.filter(
-          (item) => item.slotId !== 'timeline-extend' || item.itemId !== null
+          (item) => !timelineSlots.includes(item.slotId)
         )
         swapyDataToSet.push(
-          { slotId: 'timeline-extend', itemId: null },
+          { slotId: 'timeline-extend-start', itemId: null },
+          { slotId: 'timeline-extend-end', itemId: null },
           { slotId: `timeline-${clipId}`, itemId: clipId }
         )
         if (clipId) {
@@ -484,13 +527,13 @@ const useVideoEditorStore = create<VideoEditorStore>((set, get) => ({
           setClipIsDragging(false)
           swapyRef?.setData({ array: swapyDataToSet })
           setMostRecentSwapEvent({ data: { array: swapyDataToSet } })
-          setCurrentZone(ZoneCurrent.OTHER)
         }
       }
       if (currentZone == ZoneCurrent.PREVIEW) {
         console.log('preview')
         const clipId = useVideoEditorStore.getState().clipDragged
         if (clipId) {
+          console.log('clipId', clipId)
           setPreview(clipId)
           const swapyDataToSet = swapyData.filter(
             (item) => item.slotId !== 'preview' || item.itemId !== null
@@ -504,7 +547,6 @@ const useVideoEditorStore = create<VideoEditorStore>((set, get) => ({
           swapyDataToSet.push({ slotId: 'preview', itemId: null })
           swapyRef?.setData({ array: swapyDataToSet })
           setMostRecentSwapEvent({ data: { array: swapyDataToSet } })
-          setCurrentZone(ZoneCurrent.OTHER)
         }
       }
       if (currentZone == ZoneCurrent.TIMELINE_NEW) {
@@ -515,9 +557,12 @@ const useVideoEditorStore = create<VideoEditorStore>((set, get) => ({
           const swapyDataToSet = swapyData.filter(
             (item) => item.slotId !== 'timeline-new'
           )
-          swapyData.filter(
-            (item) => item.itemId !== null
+          const itemToRemove = swapyDataToSet.find(
+            (item) => item.itemId === clipId
           )
+          if (itemToRemove) {
+            swapyDataToSet.splice(swapyDataToSet.indexOf(itemToRemove), 1)
+          }
           swapyDataToSet.push(
             { slotId: 'timeline-new', itemId: null },
             { slotId: `timeline-${clipId}`, itemId: clipId }
@@ -528,11 +573,11 @@ const useVideoEditorStore = create<VideoEditorStore>((set, get) => ({
           console.log('swapyDataToSet', swapyDataToSet)
           swapyRef?.setData({ array: swapyDataToSet })
           setMostRecentSwapEvent({ data: { array: swapyDataToSet } })
-          setCurrentZone(ZoneCurrent.OTHER)
         } else {
           console.log('swapyData, clipId not found', clipId, swapyData)
         }
         setEnableDropZones(false)
+        setMousePosition({ x0: 0, y0: 0, x1: 0, y1: 0 })
       }
     }
   },
@@ -574,10 +619,6 @@ const DropZone = ({
 
     if (isMouseInside) {
       setCurrentZone(zone)
-    } else if (zone === useVideoEditorStore.getState().currentZone) {
-      setTimeout(() => {
-        setCurrentZone(ZoneCurrent.OTHER)
-      }, 100)
     }
   }, [mousePosition, zone, setCurrentZone, setMouseIsInside])
 
@@ -604,6 +645,7 @@ const SearchBin = () => {
     setCurrentSearch,
     handleSwap,
     setMousePosition,
+    setCurrentZone,
   } = useVideoEditorStore()
   const [draggedItem, setDraggedItem] = useState<HTMLElement | null>(null)
   const dragListener = (e: React.DragEvent<HTMLDivElement>) => {
@@ -612,6 +654,8 @@ const SearchBin = () => {
       .closest('[data-swapy-item]')
       ?.getAttribute('data-swapy-item')
     if (swapyItem) {
+      setMousePosition({ x0: 0, y0: 0, x1: 0, y1: 0 })
+      setCurrentZone(ZoneCurrent.OTHER)
       setClipDragged(swapyItem)
     }
     setDraggedItem(target)
@@ -640,8 +684,9 @@ const SearchBin = () => {
   useEffect(() => {
     if (clipIsDragging && draggedItem) {
       const handleMouseMove = () => {
-        const rect = draggedItem?.getBoundingClientRect()
-        if (rect) {
+        const swapyItem = draggedItem?.closest('[data-swapy-item]')
+        if (swapyItem) {
+          const rect = swapyItem.getBoundingClientRect()
           setMousePosition({
             x0: rect.left,
             y0: rect.top,
@@ -657,6 +702,7 @@ const SearchBin = () => {
       }
     }
   }, [draggedItem])
+  // need to make these separate components to animate properly
   const clipResultList = clipsInSearch().map((clip, index) => (
     <span
       key={`search-spot-${index}`}
@@ -668,7 +714,7 @@ const SearchBin = () => {
       <div
         key={clip.id}
         data-swapy-item={clip.id}
-        className="w-full p-4 border border-gray-200 rounded-lg shadow-sm bg-gray-50 max-h-40 text-ellipsis"
+        className="w-full p-4 border border-gray-200 rounded-lg shadow-sm bg-gray-50 max-h-40 overflow-ellipsis"
       >
         <div className="font-semibold" data-swapy-text>
           {clip.title}
@@ -708,7 +754,15 @@ const SearchBin = () => {
           </Button>
         </div>
       </div>
-      <div className="space-y-2">{clipResultList}</div>
+      <div className="space-y-2">
+        {clipsInSearch().length === 0 ? (
+          <p className="p-4 italic text-gray-500 select-none">
+            No clips found.
+          </p>
+        ) : (
+          clipResultList
+        )}
+      </div>
     </div>
   )
 }
@@ -806,6 +860,8 @@ const ClipContextMenu: React.FC<{
 }
 const TextEditor = () => {
   const {
+    activeTab,
+    setActiveTab,
     videoTitle,
     setPreview,
     highlightedWords,
@@ -813,7 +869,10 @@ const TextEditor = () => {
     clipsInTimeline,
     clipsWithPreview,
   } = useVideoEditorStore()
-  const [activeTab, setActiveTab] = useState(videoTitle)
+
+  useEffect(() => {
+    setActiveTab(videoTitle)
+  }, [videoTitle])
 
   return (
     <div className="flex flex-col flex-1 h-full p-4 bg-white">
@@ -847,7 +906,12 @@ const TextEditor = () => {
                   size="icon"
                   variant="ghost"
                   className="w-5 h-5 ml-2 hover:bg-gray-200"
-                  onClick={() => setPreview(clip.id)}
+                  onClick={() => {
+                    setPreview(clip.id)
+                    if (activeTab === `clip-${clip.id}`) {
+                      setActiveTab(videoTitle)
+                    }
+                  }}
                 >
                   <X className="w-3 h-3" />
                   <span className="sr-only">Close tab</span>
@@ -859,21 +923,26 @@ const TextEditor = () => {
         <div className="flex-1 p-6 bg-white border border-gray-200 rounded-lg shadow-sm">
           <TabsContent value={videoTitle}>
             {clipsInTimeline().length === 0 ? (
-              <div className="text-gray-500 text-start">
+              <div
+                className={`text-gray-500 text-start ${enableDropZones ? 'opacity-25 pointer-events-none' : ''} ${activeTab === videoTitle ? 'visible' : 'invisible'}`}
+              >
                 <h2 className="mb-4 text-2xl font-bold">
-                  Welcome to the Video Editor
+                  Text-based video editor
                 </h2>
                 <p className="mb-2">To get started:</p>
                 <ol className="mb-4 list-decimal list-inside">
-                  <li>Search for clips using the search bar on the left</li>
-                  <li>Click on a clip to preview it in a new tab</li>
                   <li>
-                    Drag clips from the left sidebar to the timeline below
+                    <b>Search for clips</b> using the search bar on the left
                   </li>
                   <li>
-                    Use the context menu (right-click) to trim or delete clips
+                    <b>Preview clips</b> by dragging them to the tabs above
                   </li>
-                  <li>Adjust the timeline using the playback controls</li>
+                  <li>
+                    <b>Edit clips</b> and add them to the timeline below
+                  </li>
+                  <li>
+                    <b>Right-click</b> to trim or delete clips
+                  </li>
                 </ol>
                 <p>Happy editing!</p>
               </div>
@@ -946,7 +1015,6 @@ const TimelineClip = ({
   useEffect(() => {
     if (currentTimelineDuration > 0) {
       setClipWidth((clipDuration / currentTimelineDuration) * 100)
-      console.log('clipWidth', clipWidth)
     }
   }, [clipDuration, currentTimelineDuration])
 
@@ -978,7 +1046,7 @@ const TimelineClip = ({
         <ContextMenuTrigger>
           <div data-swapy-text>
             <div
-              className="text-xs font-semibold truncate select-none max-w-2/3 text-ellipsis"
+              className="text-xs font-semibold truncate select-none max-w-2/3 overflow-ellipsis"
               data-swapy-text
             >
               {clip.title}
@@ -1019,158 +1087,53 @@ const TimelineClip = ({
   )
 }
 
-const Timeline = () => {
+interface TimelineProps {
+  handleTimelineFocus: () => void
+  handleSkipForward: () => void
+  handleSkipBackward: () => void
+  handlePlayPause: () => void
+}
+
+const Timeline = forwardRef<HTMLDivElement, TimelineProps>((props, ref) => {
+  const {
+    handleTimelineFocus,
+    handleSkipForward,
+    handleSkipBackward,
+    handlePlayPause,
+  } = props
   const [displayInlineContact, setDisplayInlineContact] = useState(false)
   const {
     clipsInTimeline,
     currentTimelineDuration,
     currentSeek,
-    setCurrentSeek,
     enableDropZones,
-    clipWithSeek,
+    isPlaying,
+    updateSwapySlotList
   } = useVideoEditorStore()
-  const timelineRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    const handleSkipForward = () => {
-      let newTime = currentSeek
-      const clipsInTimelineNow = useVideoEditorStore.getState().clipsInTimeline()
-      for (const clip of clipsInTimelineNow) {
-        const clipEnd = clip.words[clip.words.length - 1]?.end || 0
-        if (clipEnd > currentSeek) {
-          newTime = clipEnd
-          break
-        }
-        if (currentSeek === clipEnd) {
-          const nextClipIndex = clipsInTimelineNow.indexOf(clip) + 1
-          if (nextClipIndex < clipsInTimelineNow.length) {
-            newTime = clipsInTimelineNow[nextClipIndex].words[0]?.start || 0
-          }
-        }
-      }
-      setCurrentSeek(newTime)
-    }
-
-    const handleSkipBackward = () => {
-      let newTime = currentSeek
-      const clipsInTimelineNow = useVideoEditorStore.getState().clipsInTimeline()
-
-      for (let i = clipsInTimelineNow.length - 1; i >= 0; i--) {
-        const clip = clipsInTimelineNow[i]
-        const clipEnd = clip.words[clip.words.length - 1]?.end || 0
-
-        if (clipEnd < currentSeek) {
-          newTime = clipEnd
-          break
-        }
-
-        if (currentSeek === clipEnd) {
-          const previousClipIndex = i - 1
-          if (previousClipIndex >= 0) {
-            const previousClip = clipsInTimelineNow[previousClipIndex]
-            newTime =
-              previousClip.words[previousClip.words.length - 1]?.end || 0
-          }
-          break
-        }
-      }
-
-      setCurrentSeek(newTime)
-    }
-    const skipOneWordForward = () => {
-      const currentClip = clipWithSeek()
-      if (currentClip) {
-        const currentClipData = clipsInTimeline().find(
-          (clip) => clip.id === currentClip.clipId
-        )
-        if (!currentClipData) return
-        const currentWordIndex = currentClipData.words.findIndex(
-          (word) => word.start <= currentSeek && word.end > currentSeek
-        )
-        const lastWordIndex = currentClipData.words.length - 1
-        if (currentWordIndex === lastWordIndex) {
-          const nextClipIndex =
-            clipsInTimeline().findIndex(
-              (clip) => clip.id === currentClip.clipId
-            ) + 1
-          if (nextClipIndex < clipsInTimeline().length) {
-            const nextClip = clipsInTimeline()[nextClipIndex]
-            setCurrentSeek(nextClip.words[0]?.start || 0)
-          }
-        } else if (currentWordIndex < lastWordIndex) {
-          const nextWordIndex = currentWordIndex + 1
-          const nextWord = currentClipData.words[nextWordIndex]
-          setCurrentSeek(nextWord.start)
-        }
+    if (enableDropZones) {
+      updateSwapySlotList('timeline-extend-start', null)
+      updateSwapySlotList('timeline-extend-end', null)
+      for (let i = 0; i < clipsInTimeline().length - 1; i++) {
+        updateSwapySlotList(`timeline-extend-${i}`, null)
       }
     }
-
-    const skipOneWordBackward = () => {
-      const currentClip = clipWithSeek()
-      if (currentClip) {
-        const currentClipData = clipsInTimeline().find(
-          (clip) => clip.id === currentClip.clipId
-        )
-        if (!currentClipData) return
-        const currentWordIndex = currentClipData.words.findIndex(
-          (word) => word.start <= currentSeek && word.end > currentSeek
-        )
-        if (currentWordIndex === 0) {
-          const currentClipIndex = clipsInTimeline().findIndex(
-            (clip) => clip.id === currentClip.clipId
-          )
-          if (currentClipIndex > 0) {
-            const previousClip = clipsInTimeline()[currentClipIndex - 1]
-            const lastWord = previousClip.words[previousClip.words.length - 1]
-            setCurrentSeek(lastWord.start)
-          }
-        } else if (currentWordIndex > 0) {
-          const previousWord = currentClipData.words[currentWordIndex - 1]
-          setCurrentSeek(previousWord.start)
-        }
-      }
-    }
-
-    document
-      .getElementById('skip-backward')
-      ?.addEventListener('click', handleSkipBackward)
-    document
-      .getElementById('skip-forward')
-      ?.addEventListener('click', handleSkipForward)
-    const handleKeyPress = (event: KeyboardEvent) => {
-      if (event.key === 'ArrowLeft') {
-        skipOneWordBackward()
-      }
-      if (event.key === 'ArrowRight') {
-        skipOneWordForward()
-      }
-    }
-
-    document.addEventListener('keydown', handleKeyPress)
-
-    // Clean up the event listener when the component unmounts
-    return () => {
-      document.removeEventListener('keydown', handleKeyPress)
-      document
-        .getElementById('skip-backward')
-        ?.removeEventListener('click', handleSkipBackward)
-      document
-        .getElementById('skip-forward')
-        ?.removeEventListener('click', handleSkipForward)
-    }
-
-    // document.getElementById('play-pause')?.addEventListener('click', handlePlayPause)
-  }, [clipsInTimeline, currentSeek, setCurrentSeek])
+  }, [enableDropZones])
 
   return (
     <div className="w-full p-6 overflow-hidden bg-white border-t border-gray-200">
-      <div className="flex items-center justify-between">
+      <div
+        className={`flex items-center justify-between ${clipsInTimeline().length === 0 ? 'opacity-25 pointer-events-none' : ''}`}
+      >
+        {/* Control buttons */}
         <div className="flex items-center space-x-2">
           <Button
             size="icon"
             variant="outline"
             id="skip-backward"
             className="w-8 h-8 bg-white hover:bg-gray-100"
+            onClick={handleSkipBackward}
           >
             <SkipBack className="w-4 h-4" />
           </Button>
@@ -1179,23 +1142,25 @@ const Timeline = () => {
             variant="outline"
             className="w-10 h-10 bg-white hover:bg-gray-100"
             id="play-pause"
-            // onClick={() => setIsPlaying(!isPlaying)}
+            onClick={handlePlayPause}
           >
-            {/* {isPlaying ? (
+            {isPlaying ? (
               <Pause className="w-5 h-5" />
             ) : (
               <Play className="w-5 h-5" />
-            )} */}
+            )}
           </Button>
           <Button
             size="icon"
             variant="outline"
             className="w-8 h-8 bg-white hover:bg-gray-100"
             id="skip-forward"
+            onClick={handleSkipForward}
           >
             <SkipForward className="w-4 h-4" />
           </Button>
         </div>
+        {/* Other buttons */}
         <div className="flex items-center space-x-4">
           <Button
             variant="outline"
@@ -1214,7 +1179,13 @@ const Timeline = () => {
           </Button>
         </div>
       </div>
-      <div className="h-32 p-6">
+      {/* Timeline itself */}
+      <div
+        className="h-32 p-6 focus:outline-none group"
+        tabIndex={0}
+        ref={ref}
+        onFocus={handleTimelineFocus}
+      >
         {clipsInTimeline().length === 0 ? (
           <DropZone
             defaultText="Drag and drop clip to create timeline"
@@ -1275,42 +1246,55 @@ const Timeline = () => {
                 )
               )}
             </div>
-
             {/* Timeline */}
-            <div
-              ref={timelineRef}
-              className="flex h-24 overflow-hidden bg-gray-100 rounded-lg cursor-pointer"
-            >
-              {/* Clips */}
-              {clipsInTimeline().map((clip, index) => (
-                <TimelineClip
-                  key={clip.id}
-                  clip={clip}
-                  index={index}
-                  currentTimelineDuration={currentTimelineDuration}
-                />
-              ))}
-              {/* Cursor under flag */}
-              <div
-                className="absolute top-6 w-0.5 h-full bg-gradient-to-b from-green-500 to-transparent"
-                style={{
-                  left: `${(currentSeek / currentTimelineDuration) * 100}%`,
-                }}
-              />
+            <div className="flex h-24 overflow-hidden bg-gray-100 rounded-lg cursor-pointer">
               {enableDropZones && (
-                <div className="w-48 ml-2">
+                <div className="w-12">
                   <DropZone
-                    defaultText="Add clip here"
-                    swapySlot="timeline-extend"
+                    defaultText="+"
+                    swapySlot="timeline-extend-start"
                     zone={ZoneCurrent.TIMELINE_EXTEND}
                   />
                 </div>
               )}
+              {clipsInTimeline().map((clip, index) => (
+                <React.Fragment key={clip.id}>
+                  <TimelineClip
+                    clip={clip}
+                    index={index}
+                    currentTimelineDuration={currentTimelineDuration}
+                  />
+                  {enableDropZones && index < clipsInTimeline().length - 1 && (
+                    <div className="w-12">
+                      <DropZone
+                        defaultText="+"
+                        swapySlot={`timeline-extend-${index}`}
+                        zone={ZoneCurrent.TIMELINE_EXTEND}
+                      />
+                    </div>
+                  )}
+                </React.Fragment>
+              ))}
+              {enableDropZones && (
+                <div className="w-12">
+                  <DropZone
+                    defaultText="+"
+                    swapySlot="timeline-extend-end"
+                    zone={ZoneCurrent.TIMELINE_EXTEND}
+                  />
+                </div>
+              )}
+              {/* Cursor under flag */}
+              <div
+                className="absolute top-6 w-0.5 h-full bg-gradient-to-b from-green-500 to-transparent opacity-10 group-focus-within:opacity-100"
+                style={{
+                  left: `${(currentSeek / currentTimelineDuration) * 100}%`,
+                }}
+              />
             </div>
-
             {/* Current time flag */}
             <div
-              className="absolute top-0 flex items-center justify-center py-1 mt-5 text-xs text-white bg-green-500 rounded"
+              className="absolute top-0 flex items-center justify-center py-1 mt-5 text-xs text-white transition-opacity duration-200 bg-green-500 rounded opacity-50 group-focus-within:opacity-100"
               style={{
                 left: `${(currentSeek / currentTimelineDuration) * 100}%`,
                 transform: 'translateX(-50%)',
@@ -1325,23 +1309,56 @@ const Timeline = () => {
       </div>
     </div>
   )
+})
+Timeline.displayName = 'Timeline'
+
+const isInteractiveElement = (element: HTMLElement | null): boolean => {
+  if (!element) return false
+  const interactiveTags = ['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON']
+  if (interactiveTags.includes(element.tagName)) return true
+  if (element.isContentEditable) return true
+  return false
 }
 
 export default function VideoEditor() {
-  const { setMostRecentSwapEvent, swapyRef, setSwapyRef } =
-    useVideoEditorStore()
+  const {
+    setMostRecentSwapEvent,
+    swapyRef,
+    setSwapyRef,
+    setCurrentSeek,
+    currentSeek,
+    clipsInTimeline,
+    clipWithSeek,
+    isPlaying,
+    setIsPlaying,
+    setVideoTitle,
+    activeTab,
+    setActiveTab,
+    videoTitle,
+  } = useVideoEditorStore()
+
+  const timelineRef = useRef<HTMLDivElement>(null)
+
+  const focusTimeline = () => {
+    if (timelineRef.current) {
+      timelineRef.current.focus()
+      console.log('Timeline focused')
+    } else {
+      console.warn('timelineRef.current is null')
+    }
+  }
+
   useEffect(() => {
     const container = document.getElementById('swapy-container')
     if (container) {
       const swapy = createSwapy(container, {
-        animation: 'none', // dynamicor spring or none
-        continuousMode: false, // doesn't work with empty drop zones?
+        animation: 'none',
+        continuousMode: false,
         manualSwap: true,
       })
       setSwapyRef(swapy)
       swapy.enable(true)
       swapy.onSwap((event) => {
-        console.log('mostRecentSwapEvent', event)
         setMostRecentSwapEvent(event)
       })
     }
@@ -1352,9 +1369,166 @@ export default function VideoEditor() {
     }
   }, [])
 
+  useEffect(() => {
+    setVideoTitle('Example Video')
+  }, [])
+
+  const handleSkipForward = () => {
+    let newTime = currentSeek
+    const clips = clipsInTimeline()
+    for (const clip of clips) {
+      const clipEnd = clip.words[clip.words.length - 1]?.end || 0
+      if (clipEnd > currentSeek) {
+        newTime = clipEnd
+        break
+      }
+      if (currentSeek === clipEnd) {
+        const nextClipIndex = clips.indexOf(clip) + 1
+        if (nextClipIndex < clips.length) {
+          newTime = clips[nextClipIndex].words[0]?.start || 0
+        }
+      }
+    }
+    if (activeTab !== videoTitle) {
+      setActiveTab(videoTitle)
+    }
+    setCurrentSeek(newTime)
+    focusTimeline()
+  }
+
+  const handleSkipBackward = () => {
+    let newTime = currentSeek
+    const clips = clipsInTimeline()
+    for (let i = clips.length - 1; i >= 0; i--) {
+      const clip = clips[i]
+      const clipEnd = clip.words[clip.words.length - 1]?.end || 0
+
+      if (clipEnd < currentSeek) {
+        newTime = clipEnd
+        break
+      }
+
+      if (currentSeek === clipEnd) {
+        const previousClipIndex = i - 1
+        if (previousClipIndex >= 0) {
+          const previousClip = clips[previousClipIndex]
+          newTime = previousClip.words[previousClip.words.length - 1]?.end || 0
+        }
+        break
+      }
+    }
+    if (activeTab !== videoTitle) {
+      setActiveTab(videoTitle)
+    }
+    setCurrentSeek(newTime)
+    focusTimeline()
+  }
+
+  const skipOneWordForward = () => {
+    focusTimeline()
+    const currentClip = clipWithSeek()
+    if (currentClip) {
+      const currentClipData = clipsInTimeline().find(
+        (clip) => clip.id === currentClip.clipId
+      )
+      if (!currentClipData) return
+      const currentWordIndex = currentClipData.words.findIndex(
+        (word) => word.start <= currentSeek && word.end > currentSeek
+      )
+      const lastWordIndex = currentClipData.words.length - 1
+      if (currentWordIndex === lastWordIndex) {
+        const nextClipIndex =
+          clipsInTimeline().findIndex(
+            (clip) => clip.id === currentClip.clipId
+          ) + 1
+        if (nextClipIndex < clipsInTimeline().length) {
+          const nextClip = clipsInTimeline()[nextClipIndex]
+          setCurrentSeek(nextClip.words[0]?.start || 0)
+        }
+      } else if (currentWordIndex < lastWordIndex) {
+        const nextWordIndex = currentWordIndex + 1
+        const nextWord = currentClipData.words[nextWordIndex]
+        setCurrentSeek(nextWord.start)
+      }
+    }
+  }
+
+  const skipOneWordBackward = () => {
+    const currentClip = clipWithSeek()
+    if (currentClip) {
+      const currentClipData = clipsInTimeline().find(
+        (clip) => clip.id === currentClip.clipId
+      )
+      if (!currentClipData) return
+      const currentWordIndex = currentClipData.words.findIndex(
+        (word) => word.start <= currentSeek && word.end > currentSeek
+      )
+      if (currentWordIndex === 0) {
+        const currentClipIndex = clipsInTimeline().findIndex(
+          (clip) => clip.id === currentClip.clipId
+        )
+        if (currentClipIndex > 0) {
+          const previousClip = clipsInTimeline()[currentClipIndex - 1]
+          const lastWord = previousClip.words[previousClip.words.length - 1]
+          setCurrentSeek(lastWord.start)
+        }
+      } else if (currentWordIndex > 0) {
+        const previousWord = currentClipData.words[currentWordIndex - 1]
+        setCurrentSeek(previousWord.start)
+      }
+    }
+  }
+
+  const handlePlayPause = () => {
+    focusTimeline()
+    setIsPlaying(!isPlaying)
+  }
+
+  const handleKeyPress = useCallback(
+    (event: KeyboardEvent) => {
+      const activeElement = document.activeElement as HTMLElement
+      if (isInteractiveElement(activeElement)) {
+        return
+      }
+      if (activeTab !== videoTitle) {
+        setActiveTab(videoTitle)
+      }
+      if (event.key === ' ') {
+        event.preventDefault()
+        setIsPlaying(!isPlaying)
+        focusTimeline()
+      }
+      if (event.key === 'ArrowLeft') {
+        skipOneWordBackward()
+        focusTimeline()
+      }
+      if (event.key === 'ArrowRight') {
+        skipOneWordForward()
+        focusTimeline()
+      }
+    },
+    [
+      activeTab,
+      videoTitle,
+      isPlaying,
+      setIsPlaying,
+      skipOneWordBackward,
+      skipOneWordForward,
+      setActiveTab,
+      focusTimeline,
+    ]
+  )
+
+  useEffect(() => {
+    window.addEventListener('keydown', handleKeyPress)
+    return () => {
+      window.removeEventListener('keydown', handleKeyPress)
+    }
+  }, [handleKeyPress])
+
   return (
     <div
-      className="flex flex-col max-w-screen-lg border-2 rounded-sm w-svw h-[800px]"
+      className="flex flex-col max-w-screen-lg border-2 rounded-sm w-svw h-[800px] overflow-hidden"
       id="swapy-container"
     >
       <div className="flex flex-grow h-2/3">
@@ -1366,7 +1540,13 @@ export default function VideoEditor() {
         </div>
       </div>
       <div className="flex flex-grow w-full h-1/3">
-        <Timeline />
+        <Timeline
+          ref={timelineRef}
+          handleTimelineFocus={focusTimeline}
+          handleSkipForward={handleSkipForward}
+          handleSkipBackward={handleSkipBackward}
+          handlePlayPause={handlePlayPause}
+        />
       </div>
     </div>
   )
