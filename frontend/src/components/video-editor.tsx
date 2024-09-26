@@ -54,7 +54,7 @@ interface Clip {
 
 const exampleClips: Clip[] = [
   {
-    id: '1',
+    id: '1asdf',
     title: 'women_music',
     speaker: 'Speaker A',
     words: [
@@ -75,7 +75,7 @@ const exampleClips: Clip[] = [
     fromSearch: 'women_music',
   },
   {
-    id: '2',
+    id: '2asdf',
     title: 'women_m...',
     speaker: 'Speaker B',
     words: [
@@ -95,7 +95,7 @@ const exampleClips: Clip[] = [
     fromSearch: 'women_music',
   },
   {
-    id: '3',
+    id: '3asdf',
     title: 'Lo...',
     speaker: 'Speaker A',
     words: [
@@ -139,12 +139,12 @@ interface VideoEditorStore {
   setActiveTab: (tab: string) => void
   isPlaying: boolean
   setIsPlaying: (isPlaying: boolean) => void
-  mousePosition: { x0: number; y0: number; x1: number; y1: number }
+  draggedClipPosition: { x0: number; y0: number; x1: number; y1: number }
   allSpeakers: { name: string; color: string; clipIds: string[] }[]
   saveSpeaker: (clipId: string, speaker: string) => void
   updateSpeakerName: (currentName: string, newName: string) => void
   getSpeakerColor: () => string
-  setMousePosition: (position: {
+  setDraggedClipPosition: (position: {
     x0: number
     y0: number
     x1: number
@@ -190,6 +190,8 @@ interface VideoEditorStore {
   mostRecentSwapEvent: {
     data: { array: { slotId: string; itemId: string | null }[] }
   } | null
+  lastHighlightedDropZone: string | null
+  setLastHighlightedDropZone: (dropZone: string | null) => void
   setMostRecentSwapEvent: (event: {
     data: { array: { slotId: string; itemId: string | null }[] }
   }) => void
@@ -197,15 +199,25 @@ interface VideoEditorStore {
   setCurrentZone: (zone: ZoneCurrent) => void
   timelineClipIds: string[]
   setTimelineClipIds: (clipIds: string[]) => void
+  lastTimelineClipHighlighted: string | null
+  setLastTimelineClipHighlighted: (clipId: string | null) => void
+  resetClipStyles: boolean
 }
 
 const useVideoEditorStore = create<VideoEditorStore>((set, get) => ({
+  lastTimelineClipHighlighted: null,
+  setLastTimelineClipHighlighted: (clipId: string | null) =>
+    set({ lastTimelineClipHighlighted: clipId }),
+  lastHighlightedDropZone: null,
+  setLastHighlightedDropZone: (dropZone: string | null) =>
+    set({ lastHighlightedDropZone: dropZone }),
   activeTab: 'video',
   setActiveTab: (tab: string) => set({ activeTab: tab }),
   isPlaying: false,
   setIsPlaying: (isPlaying: boolean) => set({ isPlaying: isPlaying }),
-  mousePosition: { x0: 0, y0: 0, x1: 0, y1: 0 },
+  draggedClipPosition: { x0: 0, y0: 0, x1: 0, y1: 0 },
   allSpeakers: [],
+  resetClipStyles: false,
   getSpeakerColor: (): string => {
     const colors = [
       'bg-blue-300',
@@ -258,12 +270,12 @@ const useVideoEditorStore = create<VideoEditorStore>((set, get) => ({
       }
     })
   },
-  setMousePosition: (position: {
+  setDraggedClipPosition: (position: {
     x0: number
     y0: number
     x1: number
     y1: number
-  }) => set({ mousePosition: position }),
+  }) => set({ draggedClipPosition: position }),
   swapyRef: null,
   setSwapyRef: (ref: Swapy) => set({ swapyRef: ref }),
   currentTimelineDuration: 0,
@@ -482,7 +494,6 @@ const useVideoEditorStore = create<VideoEditorStore>((set, get) => ({
     // sets preview to true if it is false, and vice versa
     const { clips, setActiveTab } = useVideoEditorStore.getState()
     const clipToUpdate = clips.find((clip) => clip.id === clipId)
-    console.log('clipToUpdate', clipToUpdate)
     if (!clipToUpdate) return
     if (clipToUpdate.inTimeline) {
       throw new Error('Cannot set preview for clip that is in timeline')
@@ -529,12 +540,19 @@ const useVideoEditorStore = create<VideoEditorStore>((set, get) => ({
       setEnableDropZones,
       setMostRecentSwapEvent,
       currentZone,
+      setCurrentZone,
       setPreview,
       swapyRef,
-      setMousePosition,
-      clipsInTimeline,
+      setDraggedClipPosition,
+      setLastTimelineClipHighlighted,
+      lastTimelineClipHighlighted,
+      clipDragged,
       timelineClipIds,
+      lastHighlightedDropZone,
+      setLastHighlightedDropZone,
     } = useVideoEditorStore.getState()
+    set({ resetClipStyles: true })
+    console.log('handleSwap', event)
 
     const swapyData = event.data.array
     const clipId = useVideoEditorStore.getState().clipDragged
@@ -544,33 +562,58 @@ const useVideoEditorStore = create<VideoEditorStore>((set, get) => ({
       setClipIsDragging(false)
       return
     }
+    const zoneForSwitch = currentZone
+    const lastTimelineClipHighlightedId = lastTimelineClipHighlighted
+    if (lastTimelineClipHighlightedId) {
+      setLastTimelineClipHighlighted(null)
+    }
+    const lastHighlightedDropZoneId = lastHighlightedDropZone
+    if (lastHighlightedDropZoneId) {
+      setLastHighlightedDropZone(null)
+    }
+    setCurrentZone(ZoneCurrent.OTHER)
+    setDraggedClipPosition({ x0: 0, y0: 0, x1: 0, y1: 0 })
+    set({ resetClipStyles: false })
 
-    switch (currentZone) {
+    switch (zoneForSwitch) {
       case ZoneCurrent.TIMELINE_EXTEND:
-        console.log('timeline extend')
-        const timelineSlots = [
-          'timeline-extend-start',
-          'timeline-extend-end',
-        ].concat(
-          clipsInTimeline().map((_, index) => `timeline-extend-${index}`)
-        )
-        const swapyDataToSetExtend = swapyData.filter(
-          (item) => !timelineSlots.includes(item.slotId)
-        )
-        swapyDataToSetExtend.push(
-          { slotId: 'timeline-extend-start', itemId: null },
-          { slotId: 'timeline-extend-end', itemId: null },
-          { slotId: `timeline-${clipId}`, itemId: clipId }
-        )
+        const currentOrder = [...timelineClipIds]
+        let newOrder: string[] = []
+        if (
+          lastHighlightedDropZoneId &&
+          lastHighlightedDropZoneId.startsWith('timeline-extend-')
+        ) {
+          if (lastHighlightedDropZoneId === 'timeline-extend-start') {
+            newOrder = [clipId, ...currentOrder]
+          } else if (lastHighlightedDropZoneId === 'timeline-extend-end') {
+            newOrder = [...currentOrder, clipId]
+          } else {
+            const extendIndex = parseInt(
+              lastHighlightedDropZoneId.split('-').pop() || '0',
+              10
+            )
+            newOrder = [...currentOrder.slice(0, extendIndex), clipId, ...currentOrder.slice(extendIndex)]
+          }
+        }
+
+        const dataToMerge = newOrder.map((clipId, index) => {
+          return {
+            slotId: `timeline-${index}`,
+            itemId: clipId || null,
+          }
+        })
+        const swapyDataToSetExtend = swapyData.filter(item => !item.slotId.startsWith('timeline-'))
+        swapyDataToSetExtend.push(...dataToMerge)
+
         toggleClipFromTimeline(clipId)
         setClipDragged(null)
         setClipIsDragging(false)
         swapyRef?.setData({ array: swapyDataToSetExtend })
         setMostRecentSwapEvent({ data: { array: swapyDataToSetExtend } })
+        set({ timelineClipIds: newOrder })
         break
 
       case ZoneCurrent.PREVIEW:
-        console.log('preview')
         setPreview(clipId)
         const swapyDataToSetPreview = swapyData.filter(
           (item) => item.slotId !== 'preview' || item.itemId !== null
@@ -590,7 +633,6 @@ const useVideoEditorStore = create<VideoEditorStore>((set, get) => ({
         break
 
       case ZoneCurrent.TIMELINE_NEW:
-        console.log('timeline new')
         const swapyDataToSetNew = swapyData.filter(
           (item) => item.slotId !== 'timeline-new'
         )
@@ -605,7 +647,7 @@ const useVideoEditorStore = create<VideoEditorStore>((set, get) => ({
         }
         swapyDataToSetNew.push(
           { slotId: 'timeline-new', itemId: null },
-          { slotId: `timeline-${clipId}`, itemId: clipId }
+          { slotId: `timeline-0`, itemId: clipId }
         )
         toggleClipFromTimeline(clipId)
         setClipDragged(null)
@@ -613,58 +655,67 @@ const useVideoEditorStore = create<VideoEditorStore>((set, get) => ({
         swapyRef?.setData({ array: swapyDataToSetNew })
         setMostRecentSwapEvent({ data: { array: swapyDataToSetNew } })
         setEnableDropZones(false)
-        setMousePosition({ x0: 0, y0: 0, x1: 0, y1: 0 })
+        setDraggedClipPosition({ x0: 0, y0: 0, x1: 0, y1: 0 })
         break
 
       case ZoneCurrent.TIMELINE_CURRENT:
-        console.log('Handle Swap in TIMELINE_CURRENT')
-        console.log('swapyData', swapyData)
-  
+        console.log('timeline current')
+        if (lastTimelineClipHighlightedId && clipDragged) {
+          // Find the indices of the highlighted and dragged clips in timelineClipIds
+          const highlightedIndex = timelineClipIds.indexOf(
+            lastTimelineClipHighlightedId
+          )
+          const draggedIndex = timelineClipIds.indexOf(clipDragged)
+
+          if (highlightedIndex === -1 || draggedIndex === -1) {
+            console.warn(
+              'Highlighted or dragged clip not found in timelineClipIds.'
+            )
+            break
+          }
+
+          // Swap the positions of the highlighted and dragged clips
+          const updatedTimelineClipIds = [...timelineClipIds]
+          ;[
+            updatedTimelineClipIds[highlightedIndex],
+            updatedTimelineClipIds[draggedIndex],
+          ] = [
+            updatedTimelineClipIds[draggedIndex],
+            updatedTimelineClipIds[highlightedIndex],
+          ]
+          set({ timelineClipIds: updatedTimelineClipIds })
+          break
+        }
         const newTimelineClipIds = swapyData
-        .filter((item) => item.slotId.startsWith('timeline-')
-          && item.itemId
-          && item.slotId !== 'timeline-extend-start'
-          && item.slotId !== 'timeline-extend-end'  
-          && item.slotId !== 'timeline-new'
-          && item.itemId !== null
+          .filter(
+            (item) =>
+              item.slotId.startsWith('timeline-') &&
+              item.itemId &&
+              ![
+                'timeline-extend-start',
+                'timeline-extend-end',
+                'timeline-new',
+              ].includes(item.slotId)
+          )
+          .map((item) => item.itemId)
+        if (!newTimelineClipIds.length) {
+          break
+        }
+        const hasDuplicates = newTimelineClipIds.some(
+          (id, index) => newTimelineClipIds.indexOf(id) !== index
         )
-        .map((item) => item.itemId)
-
-        if(!newTimelineClipIds) {
-          setClipDragged(null)
-          setClipIsDragging(false)
-          return
-        }
-
-        // Check for duplicate timelineIds
-        const hasDuplicates = newTimelineClipIds.some((id, index) => 
-          newTimelineClipIds.indexOf(id) !== index
-        );
-
         if (hasDuplicates) {
-          console.error('Duplicate clip IDs detected in the timeline. Cancelling update.');
-          setClipDragged(null);
-          setClipIsDragging(false);
-          return;
+          console.error(
+            'Duplicate clip IDs detected in the timeline. Cancelling update.'
+          )
+          break
         }
 
-        // remove nulls if present.
-        const nonNullTimelineClipIds = newTimelineClipIds.filter((id) => id !== null)
-  
-        // Log for debugging
-        console.log('Old TimelineClipIds:', timelineClipIds)
-        console.log('New TimelineClipIds:', newTimelineClipIds)
-        
-        // Update the Zustand store with the new order
+        const nonNullTimelineClipIds = newTimelineClipIds.filter(
+          (id) => id !== null
+        )
+
         set({ timelineClipIds: nonNullTimelineClipIds })
-  
-        // Alternatively, if you prefer using reOrderTimelineClips:
-        // You can iterate through newTimelineClipIds and reorder accordingly
-        // However, directly setting the new order is more straightforward
-  
-        // Cleanup
-        setClipDragged(null)
-        setClipIsDragging(false)
         break
 
       default:
@@ -687,16 +738,24 @@ const DropZone = ({
   defaultText,
   swapySlot,
   zone,
+  disabled = false,
 }: {
   defaultText: string
   swapySlot: string
   zone: ZoneCurrent
+  disabled: boolean
 }) => {
-  const { setCurrentZone, mousePosition } = useVideoEditorStore()
+  const {
+    setCurrentZone,
+    draggedClipPosition: mousePosition,
+    lastHighlightedDropZone,
+    setLastHighlightedDropZone,
+  } = useVideoEditorStore()
   const [mouseIsInside, setMouseIsInside] = useState(false)
   const dropZoneRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
+    if (disabled) return
     const dropZone = dropZoneRef.current
     if (!dropZone) return
 
@@ -710,6 +769,9 @@ const DropZone = ({
     setMouseIsInside(isMouseInside)
 
     if (isMouseInside) {
+      if (lastHighlightedDropZone !== swapySlot) {
+        setLastHighlightedDropZone(swapySlot)
+      }
       setCurrentZone(zone)
     }
     // [TODO: UNDERSTAND WHY THIS BREAKS THE DROP ZONE FUNCTIONALITY???]
@@ -720,7 +782,7 @@ const DropZone = ({
     //     setCurrentZone(ZoneCurrent.OTHER)
     //   }, 200)
     // }
-  }, [mousePosition, zone, setCurrentZone, setMouseIsInside])
+  }, [mousePosition, zone, setCurrentZone, setMouseIsInside, disabled])
 
   return (
     <div
@@ -744,7 +806,7 @@ const SearchBin = () => {
     clipIsDragging,
     setCurrentSearch,
     handleSwap,
-    setMousePosition,
+    setDraggedClipPosition,
     setCurrentZone,
   } = useVideoEditorStore()
   const [draggedItem, setDraggedItem] = useState<HTMLElement | null>(null)
@@ -758,16 +820,15 @@ const SearchBin = () => {
     }
   }, [])
 
-  // Debounced setMousePosition
-  const debouncedSetMousePosition = useMemo(
+  const debouncedSetDraggedClipPosition = useMemo(
     () =>
       debounce(
         (position: { x0: number; y0: number; x1: number; y1: number }) => {
-          setMousePosition(position)
+          setDraggedClipPosition(position)
         },
         5
       ), // ~60fps
-    [debounce, setMousePosition]
+    [debounce, setDraggedClipPosition]
   )
 
   const dragListener = (e: React.DragEvent<HTMLDivElement>) => {
@@ -776,7 +837,7 @@ const SearchBin = () => {
       .closest('[data-swapy-item]')
       ?.getAttribute('data-swapy-item')
     if (swapyItem) {
-      setMousePosition({ x0: 0, y0: 0, x1: 0, y1: 0 })
+      setDraggedClipPosition({ x0: 0, y0: 0, x1: 0, y1: 0 })
       setCurrentZone(ZoneCurrent.OTHER)
       setClipDragged(swapyItem)
     }
@@ -794,7 +855,6 @@ const SearchBin = () => {
       clipIsDragging &&
       useVideoEditorStore.getState().clipDragged == swapyItem
     ) {
-      console.log('drop')
       setClipIsDragging(false)
       const mostRecentSwapEvent =
         useVideoEditorStore.getState().mostRecentSwapEvent
@@ -812,7 +872,7 @@ const SearchBin = () => {
         const swapyItem = draggedItem?.closest('[data-swapy-item]')
         if (swapyItem) {
           const rect = swapyItem.getBoundingClientRect()
-          debouncedSetMousePosition({
+          debouncedSetDraggedClipPosition({
             x0: rect.left,
             y0: rect.top,
             x1: rect.right,
@@ -826,7 +886,7 @@ const SearchBin = () => {
         window.removeEventListener('mousemove', handleMouseMove)
       }
     }
-  }, [clipIsDragging, draggedItem, debouncedSetMousePosition])
+  }, [clipIsDragging, draggedItem, debouncedSetDraggedClipPosition])
   // need to make these separate components to animate properly
   const clipResultList = clipsInSearch().map((clip, index) => (
     <span
@@ -1019,6 +1079,7 @@ const TextEditor = () => {
                 defaultText="Drop clip here to preview"
                 swapySlot="preview"
                 zone={ZoneCurrent.PREVIEW}
+                disabled={!enableDropZones}
               />
             </div>
           </div>
@@ -1114,23 +1175,26 @@ const TimelineClip = ({
   clip,
   index,
   currentTimelineDuration,
-  lastUpdateTime,
 }: {
   clip: Clip
   index: number
   currentTimelineDuration: number
-  lastUpdateTime: number
 }) => {
   const {
     setCurrentSeek,
     allSpeakers,
     clipsInTimeline,
-    setMousePosition,
+    setDraggedClipPosition,
     setCurrentZone,
     setClipDragged,
     setClipIsDragging,
     clipIsDragging,
     handleSwap,
+    draggedClipPosition: mousePosition,
+    enableDropZones,
+    setLastTimelineClipHighlighted,
+    resetClipStyles,
+    lastTimelineClipHighlighted,
   } = useVideoEditorStore()
   const [speakerColor, setSpeakerColor] = useState('')
   const clipDuration = clip.words[clip.words.length - 1]?.end || 0
@@ -1138,6 +1202,12 @@ const TimelineClip = ({
     (clipDuration / currentTimelineDuration) * 100
   )
   const [draggedItem, setDraggedItem] = useState<HTMLDivElement | null>(null)
+  const [isDragging, setIsDragging] = useState(false)
+  const [mouseIsInside, setMouseIsInside] = useState(false)
+  const [hasStartedMoving, setHasStartedMoving] = useState(false)
+  const [initialClipPosition, setInitialClipPosition] = useState({ x: 0, y: 0 })
+  const clipRef = useRef<HTMLSpanElement>(null)
+
   const clipStart = clipsInTimeline()
     .slice(0, index)
     .reduce(
@@ -1155,19 +1225,26 @@ const TimelineClip = ({
     }
   }, [])
 
-  // Debounced setMousePosition
-  const debouncedSetMousePosition = useMemo(
+  const debouncedSetDraggedClipPosition = useMemo(
     () =>
       debounce(
         (position: { x0: number; y0: number; x1: number; y1: number }) => {
-          setMousePosition(position)
+          setDraggedClipPosition(position)
         },
-        5
+        3
       ), // ~60fps
-    [debounce, setMousePosition]
+    [debounce, setDraggedClipPosition]
   )
 
+  const handleDragStart = (e: React.DragEvent<HTMLDivElement>) => {
+    setInitialClipPosition({ x: e.clientX, y: e.clientY })
+  }
+
   const dragListener = (e: React.DragEvent<HTMLDivElement>) => {
+    // Continue with the existing drag functionality
+    handleDragStart(e)
+    setIsDragging(true)
+    setCurrentZone(ZoneCurrent.TIMELINE_CURRENT)
     const target = e.target as HTMLDivElement
     const swapyElement = target?.closest('[data-swapy-item]')
     if (swapyElement) {
@@ -1175,28 +1252,37 @@ const TimelineClip = ({
     }
     const swapyItem = clip.id
     if (swapyItem) {
-      setMousePosition({ x0: 0, y0: 0, x1: 0, y1: 0 })
-      setCurrentZone(ZoneCurrent.TIMELINE_CURRENT)
+      setDraggedClipPosition({ x0: 0, y0: 0, x1: 0, y1: 0 })
       setClipDragged(swapyItem)
     }
     setClipIsDragging(true)
   }
 
+  useEffect(() => {
+    if (!isDragging) {
+      setHasStartedMoving(false)
+    }
+  }, [isDragging])
+
   const handleDrop = () => {
-    const swapyItem = clip.id
-    setDraggedItem(null)
-    if (
-      clipIsDragging &&
-      useVideoEditorStore.getState().clipDragged == swapyItem
-    ) {
-      setClipIsDragging(false)
-      const mostRecentSwapEvent =
-        useVideoEditorStore.getState().mostRecentSwapEvent
-      if (mostRecentSwapEvent) {
-        handleSwap(mostRecentSwapEvent)
-      }
+    if (clipIsDragging) {
+      const swapyItem = clip.id
+      setHasStartedMoving(false)
       setDraggedItem(null)
-      setCurrentZone(ZoneCurrent.OTHER)
+      setIsDragging(false)
+      if (
+        clipIsDragging &&
+        useVideoEditorStore.getState().clipDragged == swapyItem
+      ) {
+        setClipIsDragging(false)
+        const mostRecentSwapEvent =
+          useVideoEditorStore.getState().mostRecentSwapEvent
+        if (mostRecentSwapEvent) {
+          handleSwap(mostRecentSwapEvent)
+        }
+        setDraggedItem(null)
+        setCurrentZone(ZoneCurrent.OTHER)
+      }
     }
   }
 
@@ -1206,7 +1292,7 @@ const TimelineClip = ({
         const swapyItem = draggedItem
         if (swapyItem) {
           const rect = swapyItem.getBoundingClientRect()
-          setMousePosition({
+          debouncedSetDraggedClipPosition({
             x0: rect.left,
             y0: rect.top,
             x1: rect.right,
@@ -1220,7 +1306,8 @@ const TimelineClip = ({
         window.removeEventListener('mousemove', handleMouseMove)
       }
     }
-  }, [clipIsDragging, debouncedSetMousePosition])
+  }, [clipIsDragging, debouncedSetDraggedClipPosition])
+
   const handleSeek = (e: React.MouseEvent) => {
     const clipElement = e.currentTarget as HTMLDivElement
     const relativeX = e.clientX - clipElement.getBoundingClientRect().left
@@ -1250,28 +1337,95 @@ const TimelineClip = ({
     }
   }, [allSpeakers])
 
+  const handleDrag = (e: React.DragEvent<HTMLDivElement>) => {
+    if (!isDragging) return
+    const deltaTolerancePx = 10
+    const deltaX = Math.abs(e.clientX - initialClipPosition.x)
+    const deltaY = Math.abs(e.clientY - initialClipPosition.y)
+
+    if (
+      !hasStartedMoving &&
+      (deltaX > deltaTolerancePx || deltaY > deltaTolerancePx)
+    ) {
+      setHasStartedMoving(true)
+    }
+  }
+
+  useEffect(() => {
+    // timeline clips
+    if (clipRef.current && !isDragging) {
+      const currentClip = clipRef.current
+      const rect = currentClip.getBoundingClientRect()
+      const isMouseInside =
+        mousePosition.x0 <= rect.right &&
+        mousePosition.x1 >= rect.left &&
+        mousePosition.y0 <= rect.bottom &&
+        mousePosition.y1 >= rect.top
+
+      setMouseIsInside(isMouseInside)
+
+      if (!enableDropZones && clipIsDragging && isMouseInside && !isDragging) {
+        setLastTimelineClipHighlighted(clip.id)
+      } else {
+        if (lastTimelineClipHighlighted === clip.id) {
+          setLastTimelineClipHighlighted(null)
+        }
+        setMouseIsInside(false)
+      }
+    }
+    if (
+      mousePosition.x0 === 0 ||
+      mousePosition.x1 === 0 ||
+      mousePosition.y0 === 0 ||
+      mousePosition.y1 === 0
+    ) {
+      setMouseIsInside(false)
+    }
+    // [TODO: UNDERSTAND WHY THIS BREAKS THE DROP ZONE FUNCTIONALITY???]
+    // This breaks the drop zone functionality???
+    // if (!isMouseInside) {
+    //   // timeout to allow for a little wiggle room if the mouse is just barely outside the drop zone
+    //   setTimeout(() => {
+    //     setCurrentZone(ZoneCurrent.OTHER)
+    //   }, 200)
+    // }
+  }, [mousePosition, setCurrentZone, setMouseIsInside, isDragging])
+
+  useEffect(() => {
+    if (resetClipStyles) {
+      setMouseIsInside(false)
+      setIsDragging(false)
+      setHasStartedMoving(false)
+    }
+  }, [resetClipStyles])
   return (
     <span
       className="w-full h-full p-0 m-0"
-      data-swapy-slot={`timeline-${clip.id}`}
-      key={`timeline-${clip.id}-${lastUpdateTime}`}
+      data-swapy-slot={`timeline-${index}`}
+      ref={clipRef}
     >
       <span
-        className="relative flex flex-col justify-between flex-grow flex-shrink h-full px-6 py-2 space-y-0 bg-gray-200 border border-gray-400 rounded-lg flex-shrink-1"
+        className={cn(
+          'relative flex flex-col justify-between h-full px-6 py-2 space-y-0 bg-gray-200 border border-gray-400 rounded-lg',
+          // clipIsDragging && isDragging
+          mouseIsInside ? 'border-blue-500' : 'border-gray-400',
+          isDragging ? 'overflow-hidden justify-center h-1/4 mx-auto my-2' : '',
+          hasStartedMoving ? 'w-fit' : ''
+        )}
         style={{
-          flexBasis: `${clipWidth}%`,
+          flexBasis: clipIsDragging && isDragging ? 'auto' : `${clipWidth}%`,
           height: 'calc(100% - 4px)', // Subtract 4px to give some space for rounded corners
           margin: '2px 0', // Add vertical margin
         }}
-        onMouseUp={(e) => handleSeek(e)}
+        onMouseDown={(e) => handleSeek(e)}
+        onMouseUp={handleDrop}
         data-swapy-item={clip.id}
-        key={`timeline-${clip.id}-item-${lastUpdateTime}`}
       >
         <div
           className="absolute top-0 right-0 p-1 cursor-move"
           data-swapy-handle
           onMouseDown={dragListener}
-          onMouseUp={handleDrop}
+          onMouseMove={handleDrag}
         >
           <GripVertical className="w-4 h-4 text-gray-500" />
         </div>
@@ -1288,17 +1442,23 @@ const TimelineClip = ({
                 className="text-xs text-gray-600 truncate select-none"
                 data-swapy-text
               >
-                {clip.words
-                  .filter((w) => !w.hidden)
-                  .map((w) => w.text)
-                  .join(' ')}
+                {isDragging
+                  ? ''
+                  : clip.words
+                      .filter((w) => !w.hidden)
+                      .map((w) => w.text)
+                      .join(' ')}
               </div>
-              <Badge
-                className={`text-xs select-none ${speakerColor} text-black ml-[-10px]`}
-                data-swapy-text
-              >
-                {clip.speaker}
-              </Badge>
+              {!isDragging ? (
+                <Badge
+                  className={`text-xs select-none ${speakerColor} text-black ml-[-10px]`}
+                  data-swapy-text
+                >
+                  {clip.speaker}
+                </Badge>
+              ) : (
+                ''
+              )}
             </div>
           </ContextMenuTrigger>
           <ContextMenuContent data-swapy-text>
@@ -1342,35 +1502,14 @@ const Timeline = forwardRef<HTMLDivElement, TimelineProps>((props, ref) => {
     currentSeek,
     enableDropZones,
     isPlaying,
-    updateSwapySlotList,
     clips,
     timelineClipIds,
   } = useVideoEditorStore()
   const [clipsToRender, setClipsToRender] = useState<Clip[]>([])
-  const [lastUpdateTime, setLastUpdateTime] = useState(0)
-
-  useEffect(() => {
-    if (enableDropZones) {
-      updateSwapySlotList('timeline-extend-start', null)
-      updateSwapySlotList('timeline-extend-end', null)
-      for (let i = 0; i < clipsToRender.length - 1; i++) {
-        updateSwapySlotList(`timeline-extend-${i}`, null)
-      }
-    }
-  }, [enableDropZones, clipsToRender])
 
   useEffect(() => {
     setClipsToRender(clipsInTimeline())
-    setLastUpdateTime(Date.now())
   }, [clips, timelineClipIds])
-
-  useEffect(() => {
-    console.log('clipsToRender', clipsToRender)
-  }, [clipsToRender, lastUpdateTime])
-
-  // useEffect(() => {
-  //   console.log('clipsInTimeline', clipsInTimeline())
-  // }, [clipsInTimeline()])
 
   return (
     <div className="w-full p-6 bg-white border-t border-gray-200">
@@ -1442,6 +1581,7 @@ const Timeline = forwardRef<HTMLDivElement, TimelineProps>((props, ref) => {
             defaultText="Drag and drop clip to create timeline"
             swapySlot="timeline-new"
             zone={ZoneCurrent.TIMELINE_NEW}
+            disabled={clipsToRender.length > 0}
           />
         ) : (
           <div className="relative">
@@ -1505,37 +1645,43 @@ const Timeline = forwardRef<HTMLDivElement, TimelineProps>((props, ref) => {
                     defaultText="+"
                     swapySlot="timeline-extend-start"
                     zone={ZoneCurrent.TIMELINE_EXTEND}
+                    disabled={!enableDropZones}
                   />
                 </div>
               )}
               {clipsToRender.map((clip, index) => {
-                console.log('clipsToRender.length', clipsToRender.length)
-                console.log('clip with this length', clip)
                 return (
-                  <React.Fragment key={`fragment-${clip.id}-${lastUpdateTime}`}>
+                  <span key={`fragment-${clip.id}`} className="flex-grow">
                     <TimelineClip
-                    clip={clip}
-                    index={index}
-                    currentTimelineDuration={currentTimelineDuration}
-                    lastUpdateTime={lastUpdateTime}
-                  />
-                  {enableDropZones && index < clipsToRender.length - 1 && (
-                    <div className="w-10" key={`dropzone-${index}-${lastUpdateTime}`}>
+                      clip={clip}
+                      index={index}
+                      currentTimelineDuration={currentTimelineDuration}
+                    />
+                    <span
+                      className={cn(
+                        enableDropZones && index < clipsToRender.length - 1
+                          ? 'visible w-10'
+                          : 'invisible w-0'
+                      )}
+                      key={`dropzone-${clip.id}`}
+                    >
                       <DropZone
                         defaultText="+"
                         swapySlot={`timeline-extend-${index}`}
                         zone={ZoneCurrent.TIMELINE_EXTEND}
+                        disabled={!enableDropZones}
                       />
-                    </div>
-                  )}
-                </React.Fragment>
-              )})}
+                    </span>
+                  </span>
+                )
+              })}
               {enableDropZones && (
                 <div className="w-10">
                   <DropZone
                     defaultText="+"
                     swapySlot="timeline-extend-end"
                     zone={ZoneCurrent.TIMELINE_EXTEND}
+                    disabled={!enableDropZones}
                   />
                 </div>
               )}
@@ -1606,8 +1752,8 @@ export default function VideoEditor() {
     const container = document.getElementById('swapy-container')
     if (container) {
       const swapy = createSwapy(container, {
-        animation: 'none',
-        swapMode: 'stop',
+        // animation: 'dynamic',
+        swapMode: 'hover',
         manualSwap: true,
       })
       setSwapyRef(swapy)

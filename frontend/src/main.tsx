@@ -2,7 +2,7 @@ import { createRoot } from 'react-dom/client'
 import { Client, cacheExchange, fetchExchange, Provider } from 'urql';
 import useMainStore from '@/store';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Suspense } from 'react';
+import { Suspense, StrictMode } from 'react';
 import App from '@/App';
 import '@/index.css'
 
@@ -23,9 +23,11 @@ const client = new Client({
 });
 
 createRoot(document.getElementById('root')!).render(
-  <Provider value={client}>
-    <Suspense fallback={<Skeleton className="w-full h-full" />}>
+  <StrictMode>
+    <Provider value={client}>
+      <Suspense fallback={<Skeleton className="w-full h-full" />}>
       <App />
     </Suspense>
-  </Provider>
+    </Provider>
+  </StrictMode>
 )
