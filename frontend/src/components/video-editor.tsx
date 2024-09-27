@@ -1325,15 +1325,18 @@ const TextEditor = () => {
   )
 }
 
+// TimelineClip component
+interface TimelineClipProps {
+  clip: Clip
+  index: number
+  currentTimelineDuration: number
+}
+
 const TimelineClip = ({
   clip,
   index,
   currentTimelineDuration,
-}: {
-  clip: Clip
-  index: number
-  currentTimelineDuration: number
-}) => {
+}: TimelineClipProps) => {
   const {
     setCurrentSeek,
     allSpeakers,
@@ -1351,17 +1354,16 @@ const TimelineClip = ({
     resetClipStyles,
     lastTimelineClipHighlighted,
     setEnableDropZones,
+    mostRecentSwapEvent,
   } = useVideoEditorStore()
   const [speakerColor, setSpeakerColor] = useState('')
   const clipDuration = clip.words[clip.words.length - 1]?.end || 0
-  const [clipWidth, setClipWidth] = useState(
-    (clipDuration / currentTimelineDuration) * 100
-  )
   const [draggedItem, setDraggedItem] = useState<DraggedItem | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [mouseIsInside, setMouseIsInside] = useState(false)
   const [hasStartedMoving, setHasStartedMoving] = useState(false)
   const [initialClipPosition] = useState({ x: 0, y: 0 })
+  const percentOfTimeline = useMemo(() => (currentTimelineDuration > 0 ? (clipDuration / currentTimelineDuration) * 100 : 0), [clipDuration, currentTimelineDuration])
   const clipRef = useRef<HTMLSpanElement>(null)
 
   const clipStart = clipsInTimeline()
@@ -1395,15 +1397,36 @@ const TimelineClip = ({
   useEffect(() => {
     if (draggedItem) {
       const handleMouseMove = (e: MouseEvent) => {
-        const x = e.clientX - draggedItem.offsetX
+        const timelineElement = clipRef.current?.closest(
+          '.timeline-container'
+        ) as HTMLElement
+        if (!timelineElement) return
+
+        const timelineRect = timelineElement.getBoundingClientRect()
+        const scrollLeft = timelineElement.scrollLeft
+        const x =
+          e.clientX - draggedItem.offsetX - timelineRect.left + scrollLeft
         const y = e.clientY - draggedItem.offsetY
+
         const currentClipPosition = { x, y }
         const xDiff = Math.abs(currentClipPosition.x - initialClipPosition.x)
         const yDiff = Math.abs(currentClipPosition.y - initialClipPosition.y)
         const tolerance = 3
 
-        if((xDiff > tolerance || yDiff > tolerance) && timelineClipIds.length > 1) {
+        if (
+          (xDiff > tolerance || yDiff > tolerance) &&
+          timelineClipIds.length > 1
+        ) {
           setHasStartedMoving(true)
+        }
+
+        // Auto-scroll logic
+        const scrollSpeed = 15
+        const scrollThreshold = 50
+        if (e.clientX < timelineRect.left + scrollThreshold) {
+          timelineElement.scrollLeft -= scrollSpeed
+        } else if (e.clientX > timelineRect.right - scrollThreshold) {
+          timelineElement.scrollLeft += scrollSpeed
         }
 
         debouncedSetDraggedClipPosition({
@@ -1420,8 +1443,6 @@ const TimelineClip = ({
         setHasStartedMoving(false)
 
         if (clipIsDragging) {
-          const mostRecentSwapEvent =
-            useVideoEditorStore.getState().mostRecentSwapEvent
           if (mostRecentSwapEvent) {
             handleSwap(mostRecentSwapEvent)
           }
@@ -1449,9 +1470,13 @@ const TimelineClip = ({
     setEnableDropZones,
     setClipDragged,
     debouncedSetDraggedClipPosition,
+    timelineClipIds,
+    initialClipPosition,
+    mostRecentSwapEvent,
   ])
 
   const dragListener = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.stopPropagation()
     const target = e.currentTarget as HTMLElement
     const swapyItem = target
       .closest('[data-swapy-item]')
@@ -1492,12 +1517,6 @@ const TimelineClip = ({
   }
 
   useEffect(() => {
-    if (currentTimelineDuration > 0) {
-      setClipWidth((clipDuration / currentTimelineDuration) * 100)
-    }
-  }, [clipDuration, currentTimelineDuration])
-
-  useEffect(() => {
     for (const speaker of allSpeakers) {
       if (clip.speaker === speaker.name) {
         setSpeakerColor(speaker.color)
@@ -1506,7 +1525,6 @@ const TimelineClip = ({
   }, [allSpeakers, clip.speaker])
 
   useEffect(() => {
-    // timeline clips
     if (clipRef.current && !isDragging) {
       const currentClip = clipRef.current
       const rect = currentClip.getBoundingClientRect()
@@ -1558,21 +1576,22 @@ const TimelineClip = ({
 
   return (
     <span
-      className="w-full h-full p-0 m-0"
+      className={cn(`w-[${percentOfTimeline}%] p-0 m-0 h-1/2`)}
       data-swapy-slot={`timeline-${index}`}
       ref={clipRef}
     >
       <span
         className={cn(
-          'relative flex flex-col justify-between h-full px-6 py-2 space-y-0 bg-gray-200 border border-gray-400 rounded-lg',
+          'relative flex flex-col justify-between px-6 py-2 space-y-0 bg-gray-200 border rounded-lg select-none h-1/2',
           mouseIsInside ? 'border-blue-500' : 'border-gray-400',
-          isDragging && timelineClipIds.length > 1 ? 'overflow-hidden justify-center h-1/4 mx-auto my-2' : '',
+          isDragging && timelineClipIds.length > 1
+            ? 'overflow-hidden justify-center h-1/4 mx-auto my-2'
+            : '',
           hasStartedMoving ? 'w-fit' : ''
         )}
         style={{
-          flexBasis: clipIsDragging && isDragging ? 'auto' : `${clipWidth}%`,
-          height: 'calc(100% - 4px)', // Subtract 4px to give some space for rounded corners
-          margin: '2px 0', // Add vertical margin
+          flexBasis: enableDropZones ? 'auto' : `${percentOfTimeline}%`,
+          margin: '2px 0',
         }}
         onMouseDown={handleSeek}
         data-swapy-item={clip.id}
@@ -1589,30 +1608,36 @@ const TimelineClip = ({
           <ContextMenuTrigger>
             <div data-swapy-text>
               <div
-                className="text-xs font-semibold truncate select-none max-w-2/3 overflow-ellipsis"
+                className="flex flex-row items-center gap-5 pl-0 mb-3 ml-0 text-xs font-semibold truncate select-none max-w-2/3 overflow-ellipsis"
                 data-swapy-text
               >
                 {clip.title}
-              </div>
-              <div
-                className="text-xs text-gray-600 truncate select-none"
-                data-swapy-text
-              >
-                {isDragging
-                  ? ''
-                  : clip.words
-                      .filter((w) => !w.hidden)
-                      .map((w) => w.text)
-                      .join(' ')}
-              </div>
-              {!isDragging && (
+                {!isDragging && (
                 <Badge
-                  className={`text-xs select-none ${speakerColor} text-black ml-[-10px]`}
-                  data-swapy-text
+                  className={`text-xs select-none ${speakerColor} text-black`}
                 >
                   {clip.speaker}
                 </Badge>
               )}
+              </div>
+
+              {/* Words aligned with the clip */}
+              <div className={cn(`relative h-4 mt-1`, isDragging ? 'hidden' : '')}>
+                {clip.words.map((word) => (
+                  <span
+                    key={word.id}
+                    className="absolute text-[8px] transform -translate-x-1/2 whitespace-nowrap"
+                    style={{
+                      left: `${((word.start - clip.words[0].start) / clipDuration) * 100}%`,
+                      top: '0',
+                      whiteSpace: 'nowrap',
+                    }}
+                    data-swapy-text
+                  >
+                    {word.text}
+                  </span>
+                ))}
+              </div>
             </div>
           </ContextMenuTrigger>
           <ContextMenuContent data-swapy-text>
@@ -1633,6 +1658,7 @@ const TimelineClip = ({
   )
 }
 
+// Timeline component
 interface TimelineProps {
   handleTimelineFocus: () => void
   handleSkipForward: () => void
@@ -1656,8 +1682,10 @@ const Timeline = forwardRef<HTMLDivElement, TimelineProps>((props, ref) => {
     isPlaying,
     clips,
     timelineClipIds,
+    setCurrentSeek,
   } = useVideoEditorStore()
   const [clipsToRender, setClipsToRender] = useState<Clip[]>([])
+  const [zoomLevel, setZoomLevel] = useState<number>(1) // Default zoom level
 
   useEffect(() => {
     setClipsToRender(clipsInTimeline())
@@ -1666,7 +1694,9 @@ const Timeline = forwardRef<HTMLDivElement, TimelineProps>((props, ref) => {
   return (
     <div className="w-full p-6 bg-white border-t border-gray-200">
       <div
-        className={`flex items-center justify-between ${clipsInTimeline().length === 0 ? 'opacity-25 pointer-events-none' : ''}`}
+        className={`flex items-center justify-between ${
+          clipsInTimeline().length === 0 ? 'opacity-25 pointer-events-none' : ''
+        }`}
       >
         {/* Control buttons */}
         <div className="flex items-center space-x-2">
@@ -1704,13 +1734,32 @@ const Timeline = forwardRef<HTMLDivElement, TimelineProps>((props, ref) => {
         </div>
         {/* Other buttons */}
         <div className="flex items-center space-x-4">
+          {/* Zoom Slider */}
+          <div className="flex items-center space-x-2">
+            <span>Zoom:</span>
+            <input
+              type="range"
+              min="0.5"
+              max="4"
+              step="0.1"
+              value={zoomLevel}
+              onChange={(e) => setZoomLevel(parseFloat(e.target.value))}
+              className="w-24"
+            />
+          </div>
           <Button
             variant="outline"
-            className={`flex items-center space-x-2 ${displayInlineContact ? 'bg-blue-50 border-blue-500' : ''}`}
+            className={`flex items-center space-x-2 ${
+              displayInlineContact ? 'bg-blue-50 border-blue-500' : ''
+            }`}
             onClick={() => setDisplayInlineContact(!displayInlineContact)}
           >
             <div
-              className={`w-4 h-4 border rounded flex items-center justify-center ${displayInlineContact ? 'bg-blue-500 border-blue-500' : 'border-gray-400'}`}
+              className={`w-4 h-4 border rounded flex items-center justify-center ${
+                displayInlineContact
+                  ? 'bg-blue-500 border-blue-500'
+                  : 'border-gray-400'
+              }`}
             >
               {displayInlineContact && <Check className="w-3 h-3 text-white" />}
             </div>
@@ -1736,60 +1785,14 @@ const Timeline = forwardRef<HTMLDivElement, TimelineProps>((props, ref) => {
             disabled={clipsToRender.length > 0}
           />
         ) : (
-          <div className="relative">
-            {/* Time markers */}
-            <div className="relative flex justify-between h-4 mb-1">
-              <div
-                className="absolute text-xs text-gray-500"
-                style={{ left: '0%', transform: 'translateX(-50%)' }}
-              >
-                {formatTime(0)}
-              </div>
-              {Array.from({ length: 3 }, (_, i) => (
-                <div
-                  key={i}
-                  className="absolute text-xs text-gray-500"
-                  style={{
-                    left: `${((i + 1) / 4) * 100}%`,
-                    transform: 'translateX(-50%)',
-                  }}
-                >
-                  {formatTime(((i + 1) / 4) * currentTimelineDuration)}
-                </div>
-              ))}
-              <div
-                className="absolute text-xs text-gray-500"
-                style={{ right: '0%', transform: 'translateX(50%)' }}
-              >
-                {formatTime(currentTimelineDuration)}
-              </div>
-            </div>
-
-            {/* Ticks */}
-            <div
-              className="relative flex justify-between mb-1"
-              style={{ height: '10px' }}
-            >
-              {Array.from(
-                { length: Math.ceil(currentTimelineDuration) + 1 },
-                (_, i) => (
-                  <div
-                    key={i}
-                    className="absolute bg-gray-300"
-                    style={{
-                      left: `${(i / currentTimelineDuration) * 100}%`,
-                      height: '5px',
-                      width: '1px',
-                      bottom: '0',
-                    }}
-                  />
-                )
-              )}
-            </div>
+          <div className="relative w-full">
             {/* Timeline */}
-            <div className="relative flex h-24 overflow-x-scroll bg-gray-100 rounded-lg cursor-pointer flex-nowrap">
+            <div
+              className="relative flex flex-grow overflow-x-scroll bg-gray-100 rounded-lg cursor-pointer h-36 flex-nowrap timeline-container"
+            >
+              {/* Dropzone at the start */}
               {enableDropZones && (
-                <div className="flex-shrink-0 w-10">
+                <div className="flex-shrink-0 w-10 mt-auto h-1/2">
                   <DropZone
                     defaultText="+"
                     swapySlot="timeline-extend-start"
@@ -1798,46 +1801,81 @@ const Timeline = forwardRef<HTMLDivElement, TimelineProps>((props, ref) => {
                   />
                 </div>
               )}
-              {clipsToRender.map((clip, index) => {
-                return [
-                  <div className="flex-grow" key={`clip-${clip.id}`}>
-                    <TimelineClip
-                      clip={clip}
-                      index={index}
-                      currentTimelineDuration={currentTimelineDuration}
-                    />
-                  </div>,
-
-                  enableDropZones && index < clipsToRender.length - 1 && (
+              {/* Ticks and time markers inside the scrollable area */}
+              <div
+                className="absolute top-0 left-0 flex items-center w-full h-6"
+                style={{
+                  transform: `scaleX(${zoomLevel})`,
+                  transformOrigin: '0 0',
+                }}
+              >
+                {Array.from(
+                  { length: Math.ceil(currentTimelineDuration) + 1 },
+                  (_, i) => (
                     <div
-                      className="flex-shrink-0 w-10"
-                      key={`dropzone-${index}`}
+                      key={i}
+                      style={{
+                        position: 'absolute',
+                        left: `${(i / currentTimelineDuration) * 100}%`,
+                        transform: 'translateX(-50%)',
+                      }}
                     >
-                      <DropZone
-                        defaultText="+"
-                        swapySlot={`timeline-extend-${index}`}
-                        zone={ZoneCurrent.TIMELINE_EXTEND}
-                        disabled={!enableDropZones}
-                      />
+                      <div className="w-px h-3 bg-gray-400" />
+                      <div className="text-xs text-gray-500">
+                        {formatTime(i)}
+                      </div>
                     </div>
-                  ),
-                ].filter(Boolean) // Filter out false values
-              })}
-              {enableDropZones && (
-                <div className="w-10">
-                  <DropZone
-                    defaultText="+"
-                    swapySlot="timeline-extend-end"
-                    zone={ZoneCurrent.TIMELINE_EXTEND}
-                    disabled={!enableDropZones}
-                  />
-                </div>
-              )}
+                  )
+                )}
+              </div>
+              <div
+                className="relative flex items-center w-full mt-auto h-1/2"
+                style={{
+                  transform: `scaleX(${zoomLevel})`,
+                  transformOrigin: '0 0',
+                }}
+              >
+                {clipsToRender.map((clip, index) => {
+                  return [
+                    <div className="flex-grow" key={`clip-${clip.id}`}>
+                      <TimelineClip
+                        clip={clip}
+                        index={index}
+                        currentTimelineDuration={currentTimelineDuration}
+                      />
+                    </div>,
+
+                    enableDropZones && index < clipsToRender.length - 1 && (
+                      <div
+                        className="flex-shrink-0 w-10"
+                        key={`dropzone-${index}`}
+                      >
+                        <DropZone
+                          defaultText="+"
+                          swapySlot={`timeline-extend-${index}`}
+                          zone={ZoneCurrent.TIMELINE_EXTEND}
+                          disabled={!enableDropZones}
+                        />
+                      </div>
+                    ),
+                  ].filter(Boolean) // Filter out false values
+                })}
+                {enableDropZones && (
+                  <div className="w-10">
+                    <DropZone
+                      defaultText="+"
+                      swapySlot="timeline-extend-end"
+                      zone={ZoneCurrent.TIMELINE_EXTEND}
+                      disabled={!enableDropZones}
+                    />
+                  </div>
+                )}
+              </div>
               {/* Cursor under flag */}
               <div
-                className="absolute top-6 w-0.5 h-full bg-gradient-to-b mt-[-20px] from-green-500 to-transparent opacity-10 group-focus-within:opacity-100"
+                className="absolute top-0 h-full w-0.5 bg-green-500 opacity-50"
                 style={{
-                  left: `${(currentSeek / currentTimelineDuration) * 100}%`,
+                  left: `${(currentSeek / currentTimelineDuration) * 100 * zoomLevel}%`,
                 }}
               />
             </div>
@@ -1845,7 +1883,7 @@ const Timeline = forwardRef<HTMLDivElement, TimelineProps>((props, ref) => {
             <div
               className="absolute top-0 flex items-center justify-center py-1 mt-5 text-xs text-white transition-opacity duration-200 bg-green-500 rounded opacity-50 group-focus-within:opacity-100"
               style={{
-                left: `${(currentSeek / currentTimelineDuration) * 100}%`,
+                left: `${(currentSeek / currentTimelineDuration) * 100 * zoomLevel}%`,
                 transform: 'translateX(-50%)',
                 width: '48px',
                 height: '18px',
